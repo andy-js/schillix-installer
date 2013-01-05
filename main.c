@@ -24,12 +24,15 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <dirent.h>
 #include <limits.h>
+#include <string.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <parted/parted.h>
 
-#define DISK_PATH "/dev/rdsk"
+char program_name[] = "schillix-install";
 
 /*
  * Determine which disk schillix is being installed onto
@@ -37,46 +40,23 @@
 char *
 get_disk (void)
 {
-	DIR *dir;
-	struct dirent *dp;
-	int i, d, fd, len, nodisks = 0;
-	char path[PATH_MAX], *ret, **buf, **disks = NULL;
+	int i, d, len, nodisks = 0;
+	PedDevice *pdev;
+	char *ret, *devname, **buf, **disks = NULL;
 
-	if ((dir = opendir (DISK_PATH)) == NULL)
+	if ((pdev = ped_device_get_next (NULL)) == NULL)
+		ped_device_probe_all ();
+
+	/*
+	 * Build a list of all suitable disks
+	 */
+	while ((pdev = ped_device_get_next (pdev)) != NULL 
+	    && (devname = strrchr (pdev->path, '/')) != '\0'
+	    && (len = strlen (++devname)) > 2)
 	{
-		perror ("Unable to open " DISK_PATH);
-		return NULL;
-	}
-
-	while ((dp = readdir (dir)) != NULL)
-	{
-		/*
-		 * We're looking for the whole disk which is *s2 on sparc and *p0 on x86
-		 */
-		if ((dp->d_name[0] != 'c' || (len = strlen (dp->d_name)) < 2) ||
-#ifdef sparc
-		    (dp->d_name[len - 2] != 's' || dp->d_name[len - 1] != '2'))
-#else
-		    (dp->d_name[len - 2] != 'p' || dp->d_name[len - 1] != '0'))
-#endif
-			continue;
-
-		(void) sprintf (path, DISK_PATH "/%s", dp->d_name);
-
-		if ((fd = open (path, O_RDONLY)) == -1)
-		{
-			/*
-			 * If the devlink doesn't actually go anywhere we ignore it
-			 */
-			if (errno != ENOENT && errno != ENXIO)
-				fprintf (stderr, "Unable to probe disk %s: %s\n",
-				    dp->d_name, strerror (errno));
-			continue;
-		}
-
 		if ((buf = (char **)realloc ((void *)disks, sizeof (char *) * (nodisks + 1))) == NULL)
 		{
-			perror ("Unable to allocate memory\n");
+			perror ("Unable to allocate memory");
 			for (i = 0; i < nodisks; i++)
 				free (disks[i]);
 			free (disks);
@@ -85,19 +65,18 @@ get_disk (void)
 
 		disks = buf;
 
-		if ((disks[nodisks] = strdup (dp->d_name)) == NULL)
+		if ((disks[nodisks] = (char *)malloc (sizeof (char) * len - 2)) == NULL)
 		{
-			perror ("Unable to allocate memory\n");
+			perror ("Unable to allocate memory");
 			for (i = 0; i < nodisks; i++)
 				free (disks[i]);
 			free (disks);
 			return NULL;
 		}
 
+		strncpy (disks[nodisks], devname, len - 2)[len - 2] = '\0';
 		nodisks++;
 	}
-
-	(void) closedir(dir);
 
 	if (nodisks > 0)
 	{
@@ -132,15 +111,80 @@ get_disk (void)
 int
 format_disk (char *disk)
 {
-	char c;
+	char c, path[PATH_MAX];
+	PedDevice *pdev;
+	PedDisk *pdisk;
+	const PedDiskType *pdisk_type;
+	PedPartition *ppart;
+	const PedFileSystemType *pfs_type;
 
+	/*
+	 * Warn the user before touching the disk
+	 */
 	printf ("All data on %s will be destroyed.  Continue? [yn] ", disk);
 	while (scanf ("%c", &c) == 0 || (c != 'y' && c != 'n'))
 		printf ("\rContinue? [yn] ");
 
 	if (c == 'n')
 	{
-		printf ("User aborted format\n");
+		fprintf (stderr, "User aborted format\n");
+		return 0;
+	}
+
+	/*
+	 * Use libparted to set up single "Solaris2" boot partition
+	 */
+#ifdef sparc
+	(void) sprintf (path, "/dev/rdsk/%ss2", disk);
+#else
+	(void) sprintf (path, "/dev/rdsk/%sp0", disk);
+#endif
+
+	if ((pdev = ped_device_get (path)) == NULL)
+	{
+		fprintf (stderr, "Unable to get device handle\n");
+		return 0;
+	}
+
+	if ((pdisk_type = ped_disk_type_get ("msdos")) == NULL)
+	{
+		fprintf (stderr, "Unable to get disk type handle\n");
+		return 0;
+	}
+
+	if ((pdisk = ped_disk_new_fresh (pdev, pdisk_type)) == NULL)
+	{
+		fprintf (stderr, "Unable to get disk handle\n");
+		return 0;
+	}
+
+	if ((pfs_type = ped_file_system_type_get ("solaris")) == NULL)
+	{
+		fprintf (stderr, "Unable to get fs type handle\n");
+		return 0;
+	}
+
+	if ((ppart = ped_partition_new (pdisk, PED_PARTITION_NORMAL, pfs_type, 0, pdev->length - 1)) == NULL)
+	{
+		fprintf (stderr, "Unable to get partition handle\n");
+		return 0;
+	}
+
+	if (ped_partition_set_flag (ppart, PED_PARTITION_BOOT, 1) == 0)
+	{
+		fprintf (stderr, "Unable to set partition as active\n");
+		return 0;
+	}
+
+	if (ped_disk_add_partition (pdisk, ppart, ped_device_get_constraint (pdev)) == 0)
+	{
+		fprintf (stderr, "Unable to add parition to disk\n");
+		return 0;
+	}
+
+	if (ped_disk_commit_to_dev (pdisk) == 0)
+	{
+		fprintf (stderr, "Unable to commit changes to disk\n");
 		return 0;
 	}
 
