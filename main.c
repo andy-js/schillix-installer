@@ -31,6 +31,8 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <parted/parted.h>
+#include <sys/dkio.h>
+#include <sys/vtoc.h>
 
 char program_name[] = "schillix-install";
 
@@ -111,12 +113,17 @@ get_disk (void)
 int
 format_disk (char *disk)
 {
+	int fd;
 	char c, path[PATH_MAX];
 	PedDevice *pdev;
 	PedDisk *pdisk;
 	const PedDiskType *pdisk_type;
 	PedPartition *ppart;
 	const PedFileSystemType *pfs_type;
+	struct extvtoc vtoc;
+	struct dk_geom geo;
+	uint16_t cylinder_size;
+	uint32_t disk_size;
 
 	/*
 	 * Warn the user before touching the disk
@@ -188,6 +195,45 @@ format_disk (char *disk)
 		return 0;
 	}
 
+	/*
+	 * Create root slice for ZFS root filesystem
+	 */
+	if ((fd = open (pdev->path, O_RDWR)) == -1)
+	{
+		perror ("Unable to open disk for VTOC changes");
+		(void) close (fd);
+		return 0;
+	}
+
+	if (ioctl (fd, DKIOCGGEOM, &geo) == -1)
+	{
+		perror ("Unable to read disk geometry");
+		(void) close (fd);
+		return 0;
+	}
+
+	cylinder_size = geo.dkg_nhead * geo.dkg_nsect;
+	disk_size = geo.dkg_ncyl * geo.dkg_nhead * geo.dkg_nsect;
+
+	if (!read_extvtoc (fd, &vtoc))
+	{
+		fprintf (stderr, "Unable to read VTOC from disk\n");
+		(void) close (fd);
+		return 0;
+	}
+	
+	vtoc.v_part[0].p_tag = V_ROOT;
+	vtoc.v_part[0].p_start = cylinder_size;
+	vtoc.v_part[0].p_size = disk_size - cylinder_size;
+
+	if (write_extvtoc (fd, &vtoc) < 0)
+	{
+		fprintf (stderr, "Unable to write VTOC to disk\n");
+		(void) close (fd);
+		return 0;
+	}
+
+	(void) close (fd);
 	return 1;
 }
 

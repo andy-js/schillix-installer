@@ -1,7 +1,7 @@
 #!/usr/bin/gmake
 
 CFLAGS = -Wall -Werror
-LIBS = -lparted
+LIBS = -lparted -ladm
 
 schillix-install:
 	gcc $(CFLAGS) $(LIBS) main.c -o schillix-install
