@@ -39,7 +39,7 @@ char *
 get_disk (void)
 {
 	int i = 0, d = 0, nodisks = 0;
-	char *devname, *ret = NULL, **disks = NULL;
+	char *ret = NULL, **disks = NULL;
 
 	if ((disks = get_suitable_disks ()) == NULL)
 	{
@@ -51,10 +51,8 @@ get_disk (void)
 	 * Present the user with a list of suitable disks and get their chosen one
 	 */
 	printf ("Please choose a disk to install schillix on:\n");
-	while ((devname = *disks++) != NULL)
-		printf ("[%d] %s\n", nodisks++, devname);
-	for (i = 0; i <= nodisks; i++)
-		*disks--;
+	for (nodisks = 0; disks[nodisks] != NULL; nodisks++)
+		printf ("[%d] %s\n", nodisks, disks[nodisks]);
 	printf ("Enter choice: ");
 	while ((scanf ("%d", &d) == 0 && fflush (stdin) < 1) || (d < 0 || d >= nodisks))
 		printf ("\rEnter choice: ");

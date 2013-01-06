@@ -25,9 +25,14 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <limits.h>
+#include <dirent.h>
+#include <fcntl.h>
+#include <errno.h>
 #include <parted/parted.h>
 #include <sys/dkio.h>
 #include <sys/vtoc.h>
+
+#define DISK_PATH "/dev/rdsk"
 
 /*
  * Return a list of all suitable disks
@@ -35,48 +40,76 @@
 char **
 get_suitable_disks (void)
 {
-	int i, len, nodisks = 0;
-	char *devname, **buf, **disks = NULL;
-	PedDevice *pdev;
+	DIR *dir;
+	struct dirent *dp;
+	int i, fd, len, nodisks = 0;
+	char path[PATH_MAX], **buf, **disks = NULL;
 
-	if ((pdev = ped_device_get_next (NULL)) == NULL)
-		ped_device_probe_all ();
+	if ((dir = opendir (DISK_PATH)) == NULL)
+	{
+		perror ("Unable to open " DISK_PATH);
+		return NULL;
+	}
 
-	while ((pdev = ped_device_get_next (pdev)) != NULL 
-	    && (devname = strrchr (pdev->path, '/')) != '\0'
-	    && (len = strlen (++devname)) > 2)
+	while ((dp = readdir (dir)) != NULL)
 	{
 		/*
-		 * Allocate enough space for the next disk and the NULL terminator
+		 * We're looking for the whole disk which is *s2 on sparc and *p0 on x86
+		 */
+		if ((dp->d_name[0] != 'c' || (len = strlen (dp->d_name)) < 2) ||
+#ifdef sparc
+		    (dp->d_name[len - 2] != 's' || dp->d_name[len - 1] != '2'))
+#else
+		    (dp->d_name[len - 2] != 'p' || dp->d_name[len - 1] != '0'))
+#endif
+			continue;
+
+		(void) sprintf (path, DISK_PATH "/%s", dp->d_name);
+
+		if ((fd = open (path, O_RDONLY)) == -1)
+		{
+			/*
+			 * If the devlink doesn't actually go anywhere we ignore it
+			 */
+			if (errno != ENOENT && errno != ENXIO)
+				fprintf (stderr, "Unable to probe disk %s: %s\n",
+				    dp->d_name, strerror (errno));
+			continue;
+		}
+
+		(void) close (fd);
+
+		/*
+		 * Allocate enough memory for the next disk and the NULL terminator
 		 */
 		if ((buf = (char **)realloc ((void *)disks, sizeof (char *) * (nodisks + 2))) == NULL)
-		{
-			perror ("Unable to allocate memory");
-			for (i = 0; i < nodisks; i++)
-				free (disks[i]);
-			free (disks);
-			return NULL;
-		}
+			goto nomem;
 
 		disks = buf;
 
 		/*
-		 * Copy the disk device name but leave off the arch specific suffix (s2/p0)
+		 * Copy the device name but drop the whole-device suffix (s2/p0)
 		 */
-		if ((disks[nodisks] = (char *)malloc (sizeof (char) * len - 2)) == NULL)
-		{
-			perror ("Unable to allocate memory");
-			for (i = 0; i < nodisks; i++)
-				free (disks[i]);
-			free (disks);
-			return NULL;
-		}
+		if ((disks[nodisks] = malloc (sizeof (char) * (len - 2))) == NULL)
+			goto nomem;
 
-		strncpy (disks[nodisks], devname, len - 2)[len - 2] = '\0';
-		disks[++nodisks] = NULL;
+		strncpy (disks[nodisks++], dp->d_name, len - 2);
 	}
 
+	(void) closedir (dir);
+
+	disks[nodisks] = NULL;
 	return disks;
+
+nomem:
+	perror ("Unable to allocate memory");
+
+	for (i = 0; i < nodisks; i++)
+		free (disks[i]);
+	free (disks);
+
+	(void) closedir (dir);
+	return NULL;
 }
 
 /*
