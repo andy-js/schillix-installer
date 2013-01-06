@@ -89,23 +89,29 @@ format_disk (char *disk)
 	if (c == 'n')
 	{
 		fprintf (stderr, "User aborted format\n");
-		return 0;
+		return -1;
 	}
 
-	if (create_root_partition (disk) == 0)
+	if (create_root_partition (disk) == -1)
 	{
 		fprintf (stderr, "Unable to create schillix boot partition\n");
-		return 0;
+		return -1;
 	}
 
-	if (create_root_slice (fd) == 0)
+	if ((fd = open_disk (disk, O_RDWR)) == -1)
+	{
+		fprintf (stderr, "Unable to open disk %s: %s\n", disk, strerror (errno));
+		return -1;
+	}
+
+	if (create_root_slice (fd) == -1)
 	{
 		fprintf (stderr, "Unable to create root slice for root zpool\n");
-		return 0;
+		return -1;
 	}
 
 	(void) close (fd);
-	return 1;
+	return 0;
 }
 
 int
@@ -119,7 +125,7 @@ main (int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
-	if (format_disk (disk) == 0)
+	if (format_disk (disk) == -1)
 	{
 		fprintf (stderr, "Unable to complete disk format\n");
 		return EXIT_FAILURE;

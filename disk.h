@@ -23,5 +23,6 @@
  */
 
 char **get_suitable_disks (void);
+int open_disk (char *disk, int mode);
 int create_root_partition (char *disk);
 int create_root_slice (int fd);

@@ -112,6 +112,21 @@ nomem:
 	return NULL;
 }
 
+int
+open_disk (char *disk, int mode)
+{
+	char path[PATH_MAX];
+
+#ifdef sparc
+	(void) sprintf (path, "/dev/rdsk/%ss2", disk);
+#else
+	(void) sprintf (path, "/dev/rdsk/%sp0", disk);
+#endif
+
+	return open (path, mode);
+}
+	
+
 /*
  * Create a single "Solaris2" boot partition
  * FIXME: Remove dependency on GNU libparted
@@ -135,52 +150,52 @@ create_root_partition (char *disk)
 	if ((pdev = ped_device_get (path)) == NULL)
 	{
 		fprintf (stderr, "Unable to get device handle\n");
-		return 0;
+		return -1;
 	}
 
 	if ((pdisk_type = ped_disk_type_get ("msdos")) == NULL)
 	{
 		fprintf (stderr, "Unable to get disk type handle\n");
-		return 0;
+		return -1;
 	}
 
 	if ((pdisk = ped_disk_new_fresh (pdev, pdisk_type)) == NULL)
 	{
 		fprintf (stderr, "Unable to get disk handle\n");
-		return 0;
+		return -1;
 	}
 
 	if ((pfs_type = ped_file_system_type_get ("solaris")) == NULL)
 	{
 		fprintf (stderr, "Unable to get fs type handle\n");
-		return 0;
+		return -1;
 	}
 
 	if ((ppart = ped_partition_new (pdisk, PED_PARTITION_NORMAL, pfs_type, 0, pdev->length - 1)) == NULL)
 	{
 		fprintf (stderr, "Unable to get partition handle\n");
-		return 0;
+		return -1;
 	}
 
 	if (ped_partition_set_flag (ppart, PED_PARTITION_BOOT, 1) == 0)
 	{
 		fprintf (stderr, "Unable to set partition as active\n");
-		return 0;
+		return -1;
 	}
 
 	if (ped_disk_add_partition (pdisk, ppart, ped_device_get_constraint (pdev)) == 0)
 	{
 		fprintf (stderr, "Unable to add parition to disk\n");
-		return 0;
+		return -1;
 	}
 
 	if (ped_disk_commit_to_dev (pdisk) == 0)
 	{
 		fprintf (stderr, "Unable to commit changes to disk\n");
-		return 0;
+		return -1;
 	}
 
-	return 1;
+	return 0;
 }
 
 /*
@@ -198,7 +213,7 @@ create_root_slice (int fd)
 	{
 		perror ("Unable to read disk geometry");
 		(void) close (fd);
-		return 0;
+		return -1;
 	}
 
 	cylinder_size = geo.dkg_nhead * geo.dkg_nsect;
@@ -208,7 +223,7 @@ create_root_slice (int fd)
 	{
 		fprintf (stderr, "Unable to read VTOC from disk\n");
 		(void) close (fd);
-		return 0;
+		return -1;
 	}
 	
 	vtoc.v_part[0].p_tag = V_ROOT;
@@ -219,8 +234,8 @@ create_root_slice (int fd)
 	{
 		fprintf (stderr, "Unable to write VTOC to disk\n");
 		(void) close (fd);
-		return 0;
+		return -1;
 	}
 
-	return 1;
+	return 0;
 }
