@@ -22,7 +22,10 @@
  * (c) Copyright 2013 - Andrew Stormont <andyjstormont@gmail.com>
  */
 
+#include <libzfs.h>
+
+libzfs_handle_t *libzfs_handle;
 char **get_suitable_disks (void);
-int open_disk (char *disk, int mode);
 int create_root_partition (char *disk);
-int create_root_slice (int fd);
+int create_root_slice (char *disk);
+int create_root_filesystem (char *disk);

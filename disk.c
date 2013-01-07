@@ -28,9 +28,13 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <libzfs.h>
+#include <libnvpair.h>
 #include <parted/parted.h>
 #include <sys/dkio.h>
 #include <sys/vtoc.h>
+
+#include "disk.h"
 
 #define DISK_PATH "/dev/rdsk"
 
@@ -112,21 +116,6 @@ nomem:
 	return NULL;
 }
 
-int
-open_disk (char *disk, int mode)
-{
-	char path[PATH_MAX];
-
-#ifdef sparc
-	(void) sprintf (path, "/dev/rdsk/%ss2", disk);
-#else
-	(void) sprintf (path, "/dev/rdsk/%sp0", disk);
-#endif
-
-	return open (path, mode);
-}
-	
-
 /*
  * Create a single "Solaris2" boot partition
  * FIXME: Remove dependency on GNU libparted
@@ -142,9 +131,9 @@ create_root_partition (char *disk)
 	const PedFileSystemType *pfs_type;
 
 #ifdef sparc
-	(void) sprintf (path, "/dev/rdsk/%ss2", disk);
+	(void) sprintf (path, DISK_PATH "/%ss2", disk);
 #else
-	(void) sprintf (path, "/dev/rdsk/%sp0", disk);
+	(void) sprintf (path, DISK_PATH "/%sp0", disk);
 #endif
 
 	if ((pdev = ped_device_get (path)) == NULL)
@@ -202,12 +191,26 @@ create_root_partition (char *disk)
  * Create root slice for ZFS root filesystem
  */
 int
-create_root_slice (int fd)
+create_root_slice (char *disk)
 {
+	int fd;
+	char path[PATH_MAX];
 	struct extvtoc vtoc;
 	struct dk_geom geo;
 	uint16_t cylinder_size;
 	uint32_t disk_size;
+
+#ifdef sparc
+	(void) sprintf (path, DISK_PATH "/%ss2", disk);
+#else
+	(void) sprintf (path, DISK_PATH "/%sp0", disk);
+#endif
+
+	if ((fd = open (path, O_RDWR)) == -1)
+	{
+		perror ("Unable to open disk for VTOC changes");
+		return -1;
+	}
 
 	if (ioctl (fd, DKIOCGGEOM, &geo) == -1)
 	{
@@ -234,6 +237,72 @@ create_root_slice (int fd)
 	{
 		fprintf (stderr, "Unable to write VTOC to disk\n");
 		(void) close (fd);
+		return -1;
+	}
+
+	return 0;
+}
+
+/*
+ * Create root ZFS filesystem on first slice (s0)
+ */
+int
+create_root_filesystem (char *disk)
+{
+	char path[PATH_MAX];
+	nvlist_t *vdev, *nvroot, *props = NULL, *fsprops = NULL;
+
+	/*
+	 * Create the vdev which is just an nvlist
+	 */
+	if (nvlist_alloc (&vdev, NV_UNIQUE_NAME, 0) != 0)
+	{
+		fprintf (stderr, "Unable to allocate vdev\n");
+		return -1;
+	}
+
+	(void) sprintf (path, DISK_PATH "/%ss0", disk);
+
+	if (nvlist_add_string(vdev, ZPOOL_CONFIG_PATH, path) != 0)
+	{
+		fprintf (stderr, "Unable to set vdev path\n");
+		return -1;
+	}
+
+	if (nvlist_add_string(vdev, ZPOOL_CONFIG_TYPE, VDEV_TYPE_DISK) != 0)
+	{
+		fprintf (stderr, "Unable to set vdev type\n");
+		return -1;
+	}
+
+	/*
+	 * Create the nvroot which is the list of all vdevs
+	 * TODO: Add support for mirrored pools?
+	 */
+	if (nvlist_alloc (&nvroot, NV_UNIQUE_NAME, 0) != 0)
+	{
+		fprintf (stderr, "Unable to allocate vdev list\n");
+		return -1;
+	}
+
+	if (nvlist_add_string(nvroot, ZPOOL_CONFIG_TYPE, VDEV_TYPE_ROOT) != 0)
+	{
+		fprintf (stderr, "Unable to set vdev list type\n");
+		return -1;
+	}
+
+	if (nvlist_add_nvlist_array(nvroot, ZPOOL_CONFIG_CHILDREN, &vdev, 1) != 0)
+	{
+		fprintf (stderr, "Unable to add vdev to list\n");
+		return -1;
+	}
+
+	/*
+	 * Create the root zpool (rpool/syspool/whatever)
+	 */
+	if (zpool_create (libzfs_handle, "testpool", nvroot, props, fsprops) == -1)
+	{
+		fprintf (stderr, "Error creating rpool\n");
 		return -1;
 	}
 

@@ -23,14 +23,12 @@
  */
 
 #include <stdio.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <parted/parted.h>
+#include <libzfs.h>
 
 #include "disk.h"
 
 char program_name[] = "schillix-install";
+libzfs_handle_t *libzfs_handle = NULL;
 
 /*
  * Determine which disk schillix is being installed onto
@@ -76,7 +74,6 @@ get_disk (void)
 int
 format_disk (char *disk)
 {
-	int fd;
 	char c;
 
 	/*
@@ -98,19 +95,18 @@ format_disk (char *disk)
 		return -1;
 	}
 
-	if ((fd = open_disk (disk, O_RDWR)) == -1)
-	{
-		fprintf (stderr, "Unable to open disk %s: %s\n", disk, strerror (errno));
-		return -1;
-	}
-
-	if (create_root_slice (fd) == -1)
+	if (create_root_slice (disk) == -1)
 	{
 		fprintf (stderr, "Unable to create root slice for root zpool\n");
 		return -1;
 	}
 
-	(void) close (fd);
+	if (create_root_filesystem (disk) == -1)
+	{
+		fprintf (stderr, "Unable to create root filesystem on disk\n");
+		return -1;
+	}
+
 	return 0;
 }
 
@@ -118,6 +114,16 @@ int
 main (int argc, char **argv)
 {
 	char *disk;
+
+	/*
+	 * XXX: libzfs_init won't work unless it's called early on
+	 * Find out why so we can get rid of this nasty global
+	 */
+	if ((libzfs_handle = libzfs_init ()) == NULL)
+	{
+		fprintf (stderr, "Unable to get libzfs handle\n");
+		return EXIT_FAILURE;
+	}
 
 	if ((disk = get_disk ()) == NULL)
 	{
