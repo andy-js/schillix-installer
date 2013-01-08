@@ -281,6 +281,9 @@ create_root_filesystem (char *disk)
 {
 	char path[PATH_MAX];
 	nvlist_t *vdev, *nvroot, *props = NULL, *fsprops = NULL;
+#ifdef ZPOOL_CREATE_ALTROOT_BUG
+	zfs_handle_t *zfs_handle;
+#endif
 
 	/*
 	 * Create the vdev which is just an nvlist
@@ -382,6 +385,31 @@ create_root_filesystem (char *disk)
 		(void) nvlist_free (fsprops);
 		return -1;
 	}
+
+#ifdef ZPOOL_CREATE_ALTROOT_BUG
+	/*
+	 * Workaround a bug in libzfs which causes the root dataset to not inherit the altroot on creation.
+	 */
+	if ((zfs_handle = zfs_path_to_zhandle (libzfs_handle, ROOT_POOL, ZFS_TYPE_DATASET)) == NULL)
+	{
+		fprintf (stderr, "Unable to get zfs handle\n");
+		(void) nvlist_free (vdev);
+		(void) nvlist_free (nvroot);
+		(void) nvlist_free (props);
+		(void) nvlist_free (fsprops);
+		return -1;
+	}
+
+	if (zfs_prop_set (zfs_handle, zfs_prop_to_name (ZFS_PROP_MOUNTPOINT), "/" ROOT_POOL) == -1)
+	{
+		fprintf (stderr, "Unable to set root mountpoint\n");
+		(void) nvlist_free (vdev);
+		(void) nvlist_free (nvroot);
+		(void) nvlist_free (props);
+		(void) nvlist_free (fsprops);
+		return -1;
+	}
+#endif
 
 	(void) nvlist_free (props);
 	(void) nvlist_free (vdev);

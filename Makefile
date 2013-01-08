@@ -23,7 +23,7 @@
 # (c) Copyright 2013 - Andrew Stormont <andyjstormont@gmail.com>
 #
 
-CFLAGS = -Wall -Werror
+CFLAGS = -Wall -Werror -DZPOOL_CREATE_ALTROOT_BUG
 LIBS = -lparted -ladm -lnvpair -lzfs
 
 schillix-install:
