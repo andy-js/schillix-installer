@@ -95,9 +95,9 @@ format_disk (char *disk)
 		return -1;
 	}
 
-	if (create_root_slice (disk) == -1)
+	if (create_root_vtoc (disk) == -1)
 	{
-		fprintf (stderr, "Unable to create root slice for root zpool\n");
+		fprintf (stderr, "Unable to create new slices on disk\n");
 		return -1;
 	}
 

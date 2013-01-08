@@ -188,12 +188,12 @@ create_root_partition (char *disk)
 }
 
 /*
- * Create root slice for ZFS root filesystem
+ * Create the slices needed for a ZFS root filesystem
  */
 int
-create_root_slice (char *disk)
+create_root_vtoc (char *disk)
 {
-	int fd;
+	int i, fd;
 	char path[PATH_MAX];
 	struct extvtoc vtoc;
 	struct dk_geom geo;
@@ -228,10 +228,37 @@ create_root_slice (char *disk)
 		(void) close (fd);
 		return -1;
 	}
-	
-	vtoc.v_part[0].p_tag = V_ROOT;
-	vtoc.v_part[0].p_start = cylinder_size;
-	vtoc.v_part[0].p_size = disk_size - cylinder_size;
+
+	for (i = 0; i < V_NUMPAR; i++)
+	{
+		switch (i)
+		{
+			case 0:
+				vtoc.v_part[i].p_tag = V_ROOT;
+				vtoc.v_part[i].p_flag = 0;
+				vtoc.v_part[i].p_start = cylinder_size;
+				vtoc.v_part[i].p_size = disk_size - cylinder_size;
+				break;
+			case 2:
+				vtoc.v_part[i].p_tag = V_BACKUP;
+				vtoc.v_part[i].p_flag = V_UNMNT;
+				vtoc.v_part[i].p_start = 0;
+				vtoc.v_part[i].p_size = disk_size;
+				break;
+			case 8:
+				vtoc.v_part[i].p_tag = V_BOOT;
+				vtoc.v_part[i].p_flag = V_UNMNT;
+				vtoc.v_part[i].p_start = 0;
+				vtoc.v_part[i].p_size = cylinder_size;
+				break;
+			default:
+				vtoc.v_part[i].p_tag = V_UNASSIGNED;
+				vtoc.v_part[i].p_flag = 0;
+				vtoc.v_part[i].p_start = 0;
+				vtoc.v_part[i].p_size = 0;
+				break;
+		}
+	}
 
 	if (write_extvtoc (fd, &vtoc) < 0)
 	{
