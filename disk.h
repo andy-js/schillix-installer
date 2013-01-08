@@ -28,4 +28,6 @@ libzfs_handle_t *libzfs_handle;
 char **get_suitable_disks (void);
 int create_root_partition (char *disk);
 int create_root_vtoc (char *disk);
-int create_root_filesystem (char *disk);
+int create_root_pool (char *disk);
+int create_root_datasets (void);
+int mount_root_datasets (void);

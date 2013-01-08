@@ -101,9 +101,15 @@ format_disk (char *disk)
 		return -1;
 	}
 
-	if (create_root_filesystem (disk) == -1)
+	if (create_root_pool (disk) == -1)
 	{
-		fprintf (stderr, "Unable to create root filesystem on disk\n");
+		fprintf (stderr, "Unable to create root pool on disk\n");
+		return -1;
+	}
+
+	if (create_root_datasets () == -1)
+	{
+		fprintf (stderr, "Unable to create root datasets\n");
 		return -1;
 	}
 
@@ -136,6 +142,15 @@ main (int argc, char **argv)
 		fprintf (stderr, "Unable to complete disk format\n");
 		return EXIT_FAILURE;
 	}
+
+	if (mount_root_datasets () == -1)
+	{
+		fprintf (stderr, "Unable to mount root filessytem\n");
+		return EXIT_FAILURE;
+	}
+
+	(void) libzfs_fini (libzfs_handle);
+	libzfs_handle = NULL;
 
 	free(disk);
 	return EXIT_SUCCESS;

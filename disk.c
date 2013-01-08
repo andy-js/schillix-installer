@@ -276,6 +276,7 @@ create_root_vtoc (char *disk)
 		return -1;
 	}
 
+	(void) close (fd);
 	return 0;
 }
 
@@ -283,13 +284,13 @@ create_root_vtoc (char *disk)
 #define ROOT_NAME "schillix"
 
 /*
- * Create root ZFS filesystem on first slice (s0)
+ * Create root ZFS pool on first slice (s0)
  */
 int
-create_root_filesystem (char *disk)
+create_root_pool (char *disk)
 {
 	char path[PATH_MAX];
-	nvlist_t *vdev, *nvroot, *props = NULL, *fsprops = NULL;
+	nvlist_t *vdev, *nvroot, *props, *fsprops;
 #ifdef ZPOOL_CREATE_ALTROOT_BUG
 	zfs_handle_t *zfs_handle;
 #endif
@@ -420,13 +421,31 @@ create_root_filesystem (char *disk)
 	}
 #endif
 
-	(void) nvlist_free (props);
 	(void) nvlist_free (vdev);
 	(void) nvlist_free (nvroot);
+	(void) nvlist_free (props);
+	(void) nvlist_free (fsprops);
+	return 0;
+}
+
+/*
+ * Create root ZFS filesystem on first slice (s0)
+ */
+int
+create_root_datasets (void)
+{
+	nvlist_t *fsprops;
 
 	/*
 	 * Create the /ROOT dataset which holds all of the different roots
 	 */
+	if (nvlist_alloc (&fsprops, NV_UNIQUE_NAME, 0) != 0)
+	{
+		fprintf (stderr, "Unable to allocate fsprop list\n");
+		(void) nvlist_free (fsprops);
+		return -1;
+	}
+
 	if (nvlist_add_string (fsprops, zfs_prop_to_name (ZFS_PROP_MOUNTPOINT), ZFS_MOUNTPOINT_LEGACY) != 0)
 	{
 		fprintf (stderr, "Unable to set root mountpoint\n");
@@ -504,5 +523,25 @@ create_root_filesystem (char *disk)
 	}
 
 	(void) nvlist_free (fsprops);
+	return 0;
+}
+
+int
+mount_root_datasets (void)
+{
+	zpool_handle_t *zpool_handle;
+
+	if ((zpool_handle = zpool_open (libzfs_handle, ROOT_POOL)) == NULL)
+	{
+		fprintf (stderr, "Unable to open rpool\n");
+		return -1;
+	}
+
+	if (zpool_enable_datasets (zpool_handle, NULL, 0) == -1)
+	{
+		fprintf (stderr, "Unable to mount rpool\n");
+		return -1;
+	}
+
 	return 0;
 }
