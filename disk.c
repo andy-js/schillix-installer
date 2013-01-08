@@ -243,6 +243,9 @@ create_root_slice (char *disk)
 	return 0;
 }
 
+#define ROOT_POOL "syspool"
+#define ROOT_NAME "schillix"
+
 /*
  * Create root ZFS filesystem on first slice (s0)
  */
@@ -266,12 +269,14 @@ create_root_filesystem (char *disk)
 	if (nvlist_add_string(vdev, ZPOOL_CONFIG_PATH, path) != 0)
 	{
 		fprintf (stderr, "Unable to set vdev path\n");
+		(void) nvlist_free (vdev);
 		return -1;
 	}
 
 	if (nvlist_add_string(vdev, ZPOOL_CONFIG_TYPE, VDEV_TYPE_DISK) != 0)
 	{
 		fprintf (stderr, "Unable to set vdev type\n");
+		(void) nvlist_free (vdev);
 		return -1;
 	}
 
@@ -282,29 +287,158 @@ create_root_filesystem (char *disk)
 	if (nvlist_alloc (&nvroot, NV_UNIQUE_NAME, 0) != 0)
 	{
 		fprintf (stderr, "Unable to allocate vdev list\n");
+		(void) nvlist_free (vdev);
 		return -1;
 	}
 
 	if (nvlist_add_string(nvroot, ZPOOL_CONFIG_TYPE, VDEV_TYPE_ROOT) != 0)
 	{
 		fprintf (stderr, "Unable to set vdev list type\n");
+		(void) nvlist_free (vdev);
+		(void) nvlist_free (nvroot);
 		return -1;
 	}
 
 	if (nvlist_add_nvlist_array(nvroot, ZPOOL_CONFIG_CHILDREN, &vdev, 1) != 0)
 	{
 		fprintf (stderr, "Unable to add vdev to list\n");
+		(void) nvlist_free (vdev);
+		(void) nvlist_free (nvroot);
 		return -1;
 	}
 
 	/*
 	 * Create the root zpool (rpool/syspool/whatever)
 	 */
-	if (zpool_create (libzfs_handle, "testpool", nvroot, props, fsprops) == -1)
+	if (nvlist_alloc (&props, NV_UNIQUE_NAME, 0) != 0)
 	{
-		fprintf (stderr, "Error creating rpool\n");
+		fprintf (stderr, "Unable to allocate prop list\n");
+		(void) nvlist_free (vdev);
+		(void) nvlist_free (nvroot);
 		return -1;
 	}
 
+	if (nvlist_add_string (props, zpool_prop_to_name (ZPOOL_PROP_ALTROOT), "/mnt") != 0)
+	{
+		fprintf (stderr, "Unable to set root mountpoint\n");
+		(void) nvlist_free (vdev);
+		(void) nvlist_free (nvroot);
+		(void) nvlist_free (props);
+		return -1;
+	}
+
+	if (nvlist_alloc (&fsprops, NV_UNIQUE_NAME, 0) != 0)
+	{
+		fprintf (stderr, "Unable to allocate fsprop list\n");
+		(void) nvlist_free (vdev);
+		(void) nvlist_free (nvroot);
+		(void) nvlist_free (props);
+		return -1;
+	}
+
+	if (nvlist_add_string (fsprops, zfs_prop_to_name (ZFS_PROP_MOUNTPOINT), "/" ROOT_POOL) != 0)
+	{
+		fprintf (stderr, "Unable to set root mountpoint\n");
+		(void) nvlist_free (vdev);
+		(void) nvlist_free (nvroot);
+		(void) nvlist_free (props);
+		(void) nvlist_free (fsprops);
+		return -1;
+	}
+
+	if (zpool_create (libzfs_handle, ROOT_POOL, nvroot, props, fsprops) == -1)
+	{
+		fprintf (stderr, "Error creating rpool\n");
+		(void) nvlist_free (vdev);
+		(void) nvlist_free (nvroot);
+		(void) nvlist_free (props);
+		(void) nvlist_free (fsprops);
+		return -1;
+	}
+
+	(void) nvlist_free (props);
+	(void) nvlist_free (vdev);
+	(void) nvlist_free (nvroot);
+
+	/*
+	 * Create the /ROOT dataset which holds all of the different roots
+	 */
+	if (nvlist_add_string (fsprops, zfs_prop_to_name (ZFS_PROP_MOUNTPOINT), ZFS_MOUNTPOINT_LEGACY) != 0)
+	{
+		fprintf (stderr, "Unable to set root mountpoint\n");
+		(void) nvlist_free (fsprops);
+		return -1;
+	}
+
+	if (zfs_create (libzfs_handle, ROOT_POOL "/ROOT", ZFS_TYPE_DATASET, fsprops) != 0)
+	{
+		fprintf (stderr, "Unable to create root datatset\n");
+		(void) nvlist_free (fsprops);
+		return -1;
+	}
+
+	/*
+	 * Create the actual root filesystem /ROOT/schillix
+	 */
+	if (nvlist_add_string (fsprops, zfs_prop_to_name (ZFS_PROP_MOUNTPOINT), "/") != 0)
+	{
+		fprintf (stderr, "Unable to set fsroot mountpoint\n");
+		(void) nvlist_free (fsprops);
+		return -1;
+	}
+
+	if (zfs_create (libzfs_handle, ROOT_POOL "/ROOT/" ROOT_NAME, ZFS_TYPE_DATASET, fsprops) != 0)
+	{
+		fprintf (stderr, "Unable to create rootfs datatset\n");
+		(void) nvlist_free (fsprops);
+		return -1;
+	}
+
+	/*
+	 * Store user data on a seperate globally accessible dataset
+	 */
+	if (nvlist_add_string (fsprops, zfs_prop_to_name (ZFS_PROP_MOUNTPOINT), "/export") != 0)
+	{
+		fprintf (stderr, "Unable to set export mountpoint\n");
+		(void) nvlist_free (fsprops);
+		return -1;
+	}
+
+	if (zfs_create (libzfs_handle, ROOT_POOL "/export", ZFS_TYPE_DATASET, fsprops) != 0)
+	{
+		fprintf (stderr, "Unable to create export dataset\n");
+		(void) nvlist_free (fsprops);
+		return -1;
+	}
+
+	if (nvlist_add_string (fsprops, zfs_prop_to_name (ZFS_PROP_MOUNTPOINT), "/export/home") != 0)
+	{
+		fprintf (stderr, "Unable to set home mountpoint\n");
+		(void) nvlist_free (fsprops);
+		return -1;
+	}
+
+	if (zfs_create(libzfs_handle, ROOT_POOL "/export/home", ZFS_TYPE_DATASET, NULL) != 0)
+	{
+		fprintf (stderr, "Unable to create home dataset\n");
+		(void) nvlist_free (fsprops);
+		return -1;
+	}
+
+	if (nvlist_add_string (fsprops, zfs_prop_to_name (ZFS_PROP_MOUNTPOINT), "/export/home/schillix") != 0)
+	{
+		fprintf (stderr, "Unable to set schillix mountpoint\n");
+		(void) nvlist_free (fsprops);
+		return -1;
+	}
+
+	if (zfs_create(libzfs_handle, ROOT_POOL "/export/home/schillix", ZFS_TYPE_DATASET, NULL) != 0)
+	{
+		fprintf (stderr, "Unable to create schillix dataset\n");
+		(void) nvlist_free (fsprops);
+		return -1;
+	}
+
+	(void) nvlist_free (fsprops);
 	return 0;
 }
