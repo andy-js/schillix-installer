@@ -71,7 +71,7 @@ get_disk (void)
 /*
  * Prepare the disk so that a schillix filesystem can be created on it
  */
-int
+boolean_t
 format_disk (char *disk)
 {
 	char c;
@@ -86,34 +86,40 @@ format_disk (char *disk)
 	if (c == 'n')
 	{
 		fprintf (stderr, "User aborted format\n");
-		return -1;
+		return B_FALSE;
 	}
 
-	if (create_root_partition (disk) == -1)
+	if (disk_in_use (disk) == B_TRUE)
+	{
+		fprintf (stderr, "Disk appears to be in use already. Abort\n");
+		return B_FALSE;
+	}
+
+	if (create_root_partition (disk) == B_FALSE)
 	{
 		fprintf (stderr, "Unable to create schillix boot partition\n");
-		return -1;
+		return B_FALSE;
 	}
 
-	if (create_root_vtoc (disk) == -1)
+	if (create_root_vtoc (disk) == B_FALSE)
 	{
 		fprintf (stderr, "Unable to create new slices on disk\n");
-		return -1;
+		return B_FALSE;
 	}
 
-	if (create_root_pool (disk) == -1)
+	if (create_root_pool (disk) == B_FALSE)
 	{
 		fprintf (stderr, "Unable to create root pool on disk\n");
-		return -1;
+		return B_FALSE;
 	}
 
-	if (create_root_datasets () == -1)
+	if (create_root_datasets () == B_FALSE)
 	{
 		fprintf (stderr, "Unable to create root datasets\n");
-		return -1;
+		return B_FALSE;
 	}
 
-	return 0;
+	return B_TRUE;
 }
 
 int
@@ -137,13 +143,13 @@ main (int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
-	if (format_disk (disk) == -1)
+	if (format_disk (disk) == B_FALSE)
 	{
 		fprintf (stderr, "Unable to complete disk format\n");
 		return EXIT_FAILURE;
 	}
 
-	if (mount_root_datasets () == -1)
+	if (mount_root_datasets () == B_FALSE)
 	{
 		fprintf (stderr, "Unable to mount root filessytem\n");
 		return EXIT_FAILURE;

@@ -115,21 +115,63 @@ get_suitable_disks (void)
 	return disks;
 
 nomem:
+	(void) closedir (dir);
+
 	perror ("Unable to allocate memory");
 
 	for (i = 0; i < nodisks; i++)
 		free (disks[i]);
 	free (disks);
-
-	(void) closedir (dir);
 	return NULL;
+}
+
+/*
+ * Determine if a disk is in use already
+ */
+boolean_t
+disk_in_use (char *disk)
+{
+	int fd;
+	char *poolname, path[PATH_MAX];
+	pool_state_t poolstate;
+	boolean_t inuse = B_FALSE;
+
+	(void) sprintf (path, DISK_PATH "/%ss0", disk);
+
+	/*
+	 * If we can't open the disk, assume it's in use.
+	 */
+	if ((fd = open (path, O_RDONLY)) == -1)
+	{
+		fprintf (stderr, "Unable to probe disk: %s\n", strerror (errno));
+		return B_TRUE;
+	}
+
+	/*
+	 * Check to see if the disk is already part of a zpool.
+	 */
+	if (zpool_in_use(libzfs_handle, fd, &poolstate, &poolname, &inuse) == -1)
+	{
+		fprintf (stderr, "Unable to determine if disk is in a zpool\n");
+		return B_TRUE;
+	}
+
+	(void) close (fd);
+
+	if (inuse == B_TRUE)
+	{
+		fprintf (stderr, "Disk is already part of pool: %s\n", poolname);
+		return B_TRUE;
+	}
+
+	return B_FALSE;
 }
 
 /*
  * Create a single "Solaris2" boot partition
  * FIXME: Remove dependency on GNU libparted
  */
-int
+boolean_t
 create_root_partition (char *disk)
 {
 	char path[PATH_MAX];
@@ -148,58 +190,58 @@ create_root_partition (char *disk)
 	if ((pdev = ped_device_get (path)) == NULL)
 	{
 		fprintf (stderr, "Unable to get device handle\n");
-		return -1;
+		return B_FALSE;
 	}
 
 	if ((pdisk_type = ped_disk_type_get ("msdos")) == NULL)
 	{
 		fprintf (stderr, "Unable to get disk type handle\n");
-		return -1;
+		return B_FALSE;
 	}
 
 	if ((pdisk = ped_disk_new_fresh (pdev, pdisk_type)) == NULL)
 	{
 		fprintf (stderr, "Unable to get disk handle\n");
-		return -1;
+		return B_FALSE;
 	}
 
 	if ((pfs_type = ped_file_system_type_get ("solaris")) == NULL)
 	{
 		fprintf (stderr, "Unable to get fs type handle\n");
-		return -1;
+		return B_FALSE;
 	}
 
 	if ((ppart = ped_partition_new (pdisk, PED_PARTITION_NORMAL, pfs_type, 0, pdev->length - 1)) == NULL)
 	{
 		fprintf (stderr, "Unable to get partition handle\n");
-		return -1;
+		return B_FALSE;
 	}
 
 	if (ped_partition_set_flag (ppart, PED_PARTITION_BOOT, 1) == 0)
 	{
 		fprintf (stderr, "Unable to set partition as active\n");
-		return -1;
+		return B_FALSE;
 	}
 
 	if (ped_disk_add_partition (pdisk, ppart, ped_device_get_constraint (pdev)) == 0)
 	{
 		fprintf (stderr, "Unable to add parition to disk\n");
-		return -1;
+		return B_FALSE;
 	}
 
 	if (ped_disk_commit_to_dev (pdisk) == 0)
 	{
 		fprintf (stderr, "Unable to commit changes to disk\n");
-		return -1;
+		return B_FALSE;
 	}
 
-	return 0;
+	return B_TRUE;
 }
 
 /*
  * Create the slices needed for a ZFS root filesystem
  */
-int
+boolean_t
 create_root_vtoc (char *disk)
 {
 	int i, fd;
@@ -218,14 +260,14 @@ create_root_vtoc (char *disk)
 	if ((fd = open (path, O_RDWR)) == -1)
 	{
 		perror ("Unable to open disk for VTOC changes");
-		return -1;
+		return B_FALSE;
 	}
 
 	if (ioctl (fd, DKIOCGGEOM, &geo) == -1)
 	{
 		perror ("Unable to read disk geometry");
 		(void) close (fd);
-		return -1;
+		return B_FALSE;
 	}
 
 	cylinder_size = geo.dkg_nhead * geo.dkg_nsect;
@@ -235,7 +277,7 @@ create_root_vtoc (char *disk)
 	{
 		fprintf (stderr, "Unable to read VTOC from disk\n");
 		(void) close (fd);
-		return -1;
+		return B_FALSE;
 	}
 
 	for (i = 0; i < V_NUMPAR; i++)
@@ -273,11 +315,11 @@ create_root_vtoc (char *disk)
 	{
 		fprintf (stderr, "Unable to write VTOC to disk\n");
 		(void) close (fd);
-		return -1;
+		return B_FALSE;
 	}
 
 	(void) close (fd);
-	return 0;
+	return B_TRUE;
 }
 
 #define ROOT_POOL "syspool"
@@ -286,7 +328,7 @@ create_root_vtoc (char *disk)
 /*
  * Create root ZFS pool on first slice (s0)
  */
-int
+boolean_t
 create_root_pool (char *disk)
 {
 	char path[PATH_MAX];
@@ -301,7 +343,7 @@ create_root_pool (char *disk)
 	if (nvlist_alloc (&vdev, NV_UNIQUE_NAME, 0) != 0)
 	{
 		fprintf (stderr, "Unable to allocate vdev\n");
-		return -1;
+		return B_FALSE;
 	}
 
 	(void) sprintf (path, DISK_PATH "/%ss0", disk);
@@ -310,14 +352,14 @@ create_root_pool (char *disk)
 	{
 		fprintf (stderr, "Unable to set vdev path\n");
 		(void) nvlist_free (vdev);
-		return -1;
+		return B_FALSE;
 	}
 
 	if (nvlist_add_string(vdev, ZPOOL_CONFIG_TYPE, VDEV_TYPE_DISK) != 0)
 	{
 		fprintf (stderr, "Unable to set vdev type\n");
 		(void) nvlist_free (vdev);
-		return -1;
+		return B_FALSE;
 	}
 
 	/*
@@ -328,7 +370,7 @@ create_root_pool (char *disk)
 	{
 		fprintf (stderr, "Unable to allocate vdev list\n");
 		(void) nvlist_free (vdev);
-		return -1;
+		return B_FALSE;
 	}
 
 	if (nvlist_add_string(nvroot, ZPOOL_CONFIG_TYPE, VDEV_TYPE_ROOT) != 0)
@@ -336,7 +378,7 @@ create_root_pool (char *disk)
 		fprintf (stderr, "Unable to set vdev list type\n");
 		(void) nvlist_free (vdev);
 		(void) nvlist_free (nvroot);
-		return -1;
+		return B_FALSE;
 	}
 
 	if (nvlist_add_nvlist_array(nvroot, ZPOOL_CONFIG_CHILDREN, &vdev, 1) != 0)
@@ -344,7 +386,7 @@ create_root_pool (char *disk)
 		fprintf (stderr, "Unable to add vdev to list\n");
 		(void) nvlist_free (vdev);
 		(void) nvlist_free (nvroot);
-		return -1;
+		return B_FALSE;
 	}
 
 	/*
@@ -355,7 +397,7 @@ create_root_pool (char *disk)
 		fprintf (stderr, "Unable to allocate prop list\n");
 		(void) nvlist_free (vdev);
 		(void) nvlist_free (nvroot);
-		return -1;
+		return B_FALSE;
 	}
 
 	if (nvlist_add_string (props, zpool_prop_to_name (ZPOOL_PROP_ALTROOT), "/mnt") != 0)
@@ -364,7 +406,7 @@ create_root_pool (char *disk)
 		(void) nvlist_free (vdev);
 		(void) nvlist_free (nvroot);
 		(void) nvlist_free (props);
-		return -1;
+		return B_FALSE;
 	}
 
 	if (nvlist_alloc (&fsprops, NV_UNIQUE_NAME, 0) != 0)
@@ -373,7 +415,7 @@ create_root_pool (char *disk)
 		(void) nvlist_free (vdev);
 		(void) nvlist_free (nvroot);
 		(void) nvlist_free (props);
-		return -1;
+		return B_FALSE;
 	}
 
 	if (nvlist_add_string (fsprops, zfs_prop_to_name (ZFS_PROP_MOUNTPOINT), "/" ROOT_POOL) != 0)
@@ -383,7 +425,7 @@ create_root_pool (char *disk)
 		(void) nvlist_free (nvroot);
 		(void) nvlist_free (props);
 		(void) nvlist_free (fsprops);
-		return -1;
+		return B_FALSE;
 	}
 
 	if (zpool_create (libzfs_handle, ROOT_POOL, nvroot, props, fsprops) == -1)
@@ -393,7 +435,7 @@ create_root_pool (char *disk)
 		(void) nvlist_free (nvroot);
 		(void) nvlist_free (props);
 		(void) nvlist_free (fsprops);
-		return -1;
+		return B_FALSE;
 	}
 
 #ifdef ZPOOL_CREATE_ALTROOT_BUG
@@ -407,7 +449,7 @@ create_root_pool (char *disk)
 		(void) nvlist_free (nvroot);
 		(void) nvlist_free (props);
 		(void) nvlist_free (fsprops);
-		return -1;
+		return B_FALSE;
 	}
 
 	if (zfs_prop_set (zfs_handle, zfs_prop_to_name (ZFS_PROP_MOUNTPOINT), "/" ROOT_POOL) == -1)
@@ -417,7 +459,7 @@ create_root_pool (char *disk)
 		(void) nvlist_free (nvroot);
 		(void) nvlist_free (props);
 		(void) nvlist_free (fsprops);
-		return -1;
+		return B_FALSE;
 	}
 #endif
 
@@ -425,13 +467,13 @@ create_root_pool (char *disk)
 	(void) nvlist_free (nvroot);
 	(void) nvlist_free (props);
 	(void) nvlist_free (fsprops);
-	return 0;
+	return B_TRUE;
 }
 
 /*
  * Create root ZFS filesystem on first slice (s0)
  */
-int
+boolean_t
 create_root_datasets (void)
 {
 	nvlist_t *fsprops;
@@ -443,21 +485,21 @@ create_root_datasets (void)
 	{
 		fprintf (stderr, "Unable to allocate fsprop list\n");
 		(void) nvlist_free (fsprops);
-		return -1;
+		return B_FALSE;
 	}
 
 	if (nvlist_add_string (fsprops, zfs_prop_to_name (ZFS_PROP_MOUNTPOINT), ZFS_MOUNTPOINT_LEGACY) != 0)
 	{
 		fprintf (stderr, "Unable to set root mountpoint\n");
 		(void) nvlist_free (fsprops);
-		return -1;
+		return B_FALSE;
 	}
 
 	if (zfs_create (libzfs_handle, ROOT_POOL "/ROOT", ZFS_TYPE_DATASET, fsprops) != 0)
 	{
 		fprintf (stderr, "Unable to create root datatset\n");
 		(void) nvlist_free (fsprops);
-		return -1;
+		return B_FALSE;
 	}
 
 	/*
@@ -467,14 +509,14 @@ create_root_datasets (void)
 	{
 		fprintf (stderr, "Unable to set fsroot mountpoint\n");
 		(void) nvlist_free (fsprops);
-		return -1;
+		return B_FALSE;
 	}
 
 	if (zfs_create (libzfs_handle, ROOT_POOL "/ROOT/" ROOT_NAME, ZFS_TYPE_DATASET, fsprops) != 0)
 	{
 		fprintf (stderr, "Unable to create rootfs datatset\n");
 		(void) nvlist_free (fsprops);
-		return -1;
+		return B_FALSE;
 	}
 
 	/*
@@ -484,49 +526,49 @@ create_root_datasets (void)
 	{
 		fprintf (stderr, "Unable to set export mountpoint\n");
 		(void) nvlist_free (fsprops);
-		return -1;
+		return B_FALSE;
 	}
 
 	if (zfs_create (libzfs_handle, ROOT_POOL "/export", ZFS_TYPE_DATASET, fsprops) != 0)
 	{
 		fprintf (stderr, "Unable to create export dataset\n");
 		(void) nvlist_free (fsprops);
-		return -1;
+		return B_FALSE;
 	}
 
 	if (nvlist_add_string (fsprops, zfs_prop_to_name (ZFS_PROP_MOUNTPOINT), "/export/home") != 0)
 	{
 		fprintf (stderr, "Unable to set home mountpoint\n");
 		(void) nvlist_free (fsprops);
-		return -1;
+		return B_FALSE;
 	}
 
 	if (zfs_create(libzfs_handle, ROOT_POOL "/export/home", ZFS_TYPE_DATASET, NULL) != 0)
 	{
 		fprintf (stderr, "Unable to create home dataset\n");
 		(void) nvlist_free (fsprops);
-		return -1;
+		return B_FALSE;
 	}
 
 	if (nvlist_add_string (fsprops, zfs_prop_to_name (ZFS_PROP_MOUNTPOINT), "/export/home/schillix") != 0)
 	{
 		fprintf (stderr, "Unable to set schillix mountpoint\n");
 		(void) nvlist_free (fsprops);
-		return -1;
+		return B_FALSE;
 	}
 
 	if (zfs_create(libzfs_handle, ROOT_POOL "/export/home/schillix", ZFS_TYPE_DATASET, NULL) != 0)
 	{
 		fprintf (stderr, "Unable to create schillix dataset\n");
 		(void) nvlist_free (fsprops);
-		return -1;
+		return B_FALSE;
 	}
 
 	(void) nvlist_free (fsprops);
-	return 0;
+	return B_TRUE;
 }
 
-int
+boolean_t
 mount_root_datasets (void)
 {
 	zpool_handle_t *zpool_handle;
@@ -534,14 +576,14 @@ mount_root_datasets (void)
 	if ((zpool_handle = zpool_open (libzfs_handle, ROOT_POOL)) == NULL)
 	{
 		fprintf (stderr, "Unable to open rpool\n");
-		return -1;
+		return B_FALSE;
 	}
 
 	if (zpool_enable_datasets (zpool_handle, NULL, 0) == -1)
 	{
 		fprintf (stderr, "Unable to mount rpool\n");
-		return -1;
+		return B_FALSE;
 	}
 
-	return 0;
+	return B_TRUE;
 }
