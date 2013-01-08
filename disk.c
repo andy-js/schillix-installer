@@ -46,7 +46,7 @@ get_suitable_disks (void)
 {
 	DIR *dir;
 	struct dirent *dp;
-	int i, fd, len, nodisks = 0;
+	int i, fd, len, removable, nodisks = 0;
 	char path[PATH_MAX], **buf, **disks = NULL;
 
 	if ((dir = opendir (DISK_PATH)) == NULL)
@@ -78,6 +78,15 @@ get_suitable_disks (void)
 			if (errno != ENOENT && errno != ENXIO)
 				fprintf (stderr, "Unable to probe disk %s: %s\n",
 				    dp->d_name, strerror (errno));
+			continue;
+		}
+
+		/*
+		 * Don't bother showing removable media right now
+		 */
+		if (ioctl (fd, DKIOCREMOVABLE, &removable) == 0 && removable)
+		{
+			(void) close (fd);
 			continue;
 		}
 
