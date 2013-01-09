@@ -23,51 +23,20 @@
  */
 
 #include <stdio.h>
+#include <limits.h>
+#include <string.h>
 #include <libzfs.h>
 
+#include "config.h"
 #include "disk.h"
 #include "copy.h"
 
 char program_name[] = "schillix-install";
+char disk_path[PATH_MAX] = "";
+char rpool_name[32] = DEFAULT_RPOOL_NAME;
+char temp_mount[PATH_MAX] = DEFAULT_MNT_POINT;
+char cdrom_path[PATH_MAX] = DEFAULT_CDROM_PATH;
 libzfs_handle_t *libzfs_handle = NULL;
-
-/*
- * Determine which disk schillix is being installed onto
- */
-char *
-get_disk (void)
-{
-	int i = 0, d = 0, nodisks = 0;
-	char *ret = NULL, **disks = NULL;
-
-	if ((disks = get_suitable_disks ()) == NULL)
-	{
-		fprintf (stderr, "No suitable disks found\n");
-		return NULL;
-	}
-
-	/*
-	 * Present the user with a list of suitable disks and get their chosen one
-	 */
-	printf ("Please choose a disk to install schillix on:\n");
-	for (nodisks = 0; disks[nodisks] != NULL; nodisks++)
-		printf ("[%d] %s\n", nodisks, disks[nodisks]);
-	printf ("Enter choice: ");
-	while ((scanf ("%d", &d) == 0 && fflush (stdin) < 1) || (d < 0 || d >= nodisks))
-		printf ("\rEnter choice: ");
-	(void) fflush (stdin);
-
-	/*
-	 * Free all other device references and return the one we're using
-	 */
-	for (i = 0; i < nodisks; i++)
-		if (i == d)
-			ret = disks[i];
-		else
-			free(disks[i]);
-	free(disks);
-	return ret;
-}
 
 /*
  * Prepare the disk so that a schillix filesystem can be created on it
@@ -123,10 +92,111 @@ format_disk (char *disk)
 	return B_TRUE;
 }
 
+/*
+ * Print usage and exit
+ */
+void
+usage (int retval)
+{
+	FILE *out;
+
+	/*
+	 * Print to stderr only on error
+	 */
+	if (retval == 0)
+		out = stdout;
+	else
+		out = stderr;
+
+	/*
+	 * Add some space between error messages
+	 */
+	if (retval != 0)
+		fprintf (out, "\n");
+
+	fprintf (out, "Installer for Schillix\n");
+	fprintf (out, "(c) Copyright 2013 - Andrew Stormont\n");
+	fprintf (out, "\n");
+	fprintf (out, "usage: schillix-install [opts] /path/to/disk or devname\n");
+	fprintf (out, "\n");
+	fprintf (out, "Where opts is:\n");
+	fprintf (out, "\t-r name or new rpool (default is " DEFAULT_RPOOL_NAME ")\n");
+	fprintf (out, "\t-m temporary mountpoint (default is " DEFAULT_MNT_POINT ")\n");
+	fprintf (out, "\t-c path to livecd contents (default is " DEFAULT_CDROM_PATH ")\n");
+	fprintf (out, "\t-? print this message and exit\n");
+
+	exit (retval);
+}
+
 int
 main (int argc, char **argv)
 {
-	char *disk;
+	char c;
+	int i;
+
+	/*
+	 * Parse command line arguments
+	 */
+	while ((c = getopt (argc, argv, "r:m:c:?")) != -1)
+	{
+		switch (c)
+		{
+			case 'r':
+				if (optarg == NULL)
+				{
+					fprintf (stderr, "No rpool name given\n");
+					usage (EXIT_FAILURE);
+				}
+				strcpy (rpool_name, optarg);
+				break;
+			case 'm':
+				if (optarg == NULL)
+				{
+					fprintf (stderr, "No mount point given\n");
+					usage (EXIT_FAILURE);
+				}
+				strcpy (temp_mount, optarg);
+				break;
+			case 'c':
+				if (optarg == NULL)
+				{
+					fprintf (stderr, "No cdrom path given\n");
+					usage (EXIT_FAILURE);
+				}
+				strcpy (cdrom_path, optarg);
+				break;
+			case '?':
+				if (optopt == '?')
+					usage (EXIT_SUCCESS);
+				else
+					usage (EXIT_FAILURE);
+				break;
+			default:
+				/*
+				 * Ignoring opts is bad!
+				 */
+				abort();
+		}
+	}
+
+	for (i = optind; i < argc; i++)
+	{
+		if (disk_path[0] == '\0')
+		{
+			strcpy (disk_path, argv[i]);
+		}
+		else
+		{
+			fprintf (stderr, "Error: Please specify only one disk\n");
+			usage (EXIT_FAILURE);
+		}
+	}
+
+	if (disk_path[0] == '\0')
+	{
+		fprintf (stderr, "Error: No disk specified\n");
+		usage (EXIT_FAILURE);
+	}
 
 	/*
 	 * XXX: libzfs_init won't work unless it's called early on
@@ -138,13 +208,7 @@ main (int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
-	if ((disk = get_disk ()) == NULL)
-	{
-		fprintf (stderr, "Unable to find suitable disk for install\n");
-		return EXIT_FAILURE;
-	}
-
-	if (format_disk (disk) == B_FALSE)
+	if (format_disk (disk_path) == B_FALSE)
 	{
 		fprintf (stderr, "Unable to complete disk format\n");
 		return EXIT_FAILURE;
@@ -169,6 +233,5 @@ main (int argc, char **argv)
 	(void) libzfs_fini (libzfs_handle);
 	libzfs_handle = NULL;
 
-	free(disk);
 	return EXIT_SUCCESS;
 }

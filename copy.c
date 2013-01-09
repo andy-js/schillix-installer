@@ -32,9 +32,12 @@
 #include <ftw.h>
 #include <sys/sendfile.h>
 
-#define FILE_PATH "/.cdrom"
-#define DEST_PATH "/mnt"
+extern char temp_mount[PATH_MAX];
+extern char cdrom_path[PATH_MAX];
 
+/*
+ * Install a file/directory/symlink.  Called by copy_files
+ */
 static int
 process_path(const char *path, const struct stat *statptr, int fileflag, struct FTW *pftw)
 {
@@ -45,9 +48,9 @@ process_path(const char *path, const struct stat *statptr, int fileflag, struct 
 	/*
 	 * Work out where we're copying to... again
 	 */
-	if (realpath (FILE_PATH, base) == NULL)
+	if (realpath (cdrom_path, base) == NULL)
 	{
-		fprintf (stderr, "Unable to resolve " FILE_PATH "\n");
+		perror ("Unable to resolve cdrom path");
 		return 1;
 	}
 
@@ -58,7 +61,7 @@ process_path(const char *path, const struct stat *statptr, int fileflag, struct 
 			/*
 			 * Create new file and copy permissions
 			 */
-			(void) sprintf (dest, DEST_PATH "/%s", path + strlen (base));
+			(void) sprintf (dest, "%s/%s", temp_mount, path + strlen (base));
 
 			if ((out_fd = creat (dest, statptr->st_mode)) == -1)
 			{
@@ -120,7 +123,7 @@ process_path(const char *path, const struct stat *statptr, int fileflag, struct 
 			/*
 			 * Create new directory and copy permissions
 			 */
-			(void) sprintf (dest, DEST_PATH "/%s", path + strlen (base));
+			(void) sprintf (dest, "%s/%s", temp_mount, path + strlen (base));
 
 			if (mkdir (dest, statptr->st_mode) == -1)
 			{
@@ -161,7 +164,7 @@ process_path(const char *path, const struct stat *statptr, int fileflag, struct 
 			/*
 			 * Replicate symlink
 			 */
-			(void) sprintf (dest, DEST_PATH "/%s", path + strlen (base));
+			(void) sprintf (dest, "%s/%s", temp_mount, path + strlen (base));
 
 			if ((read = readlink (path, target, PATH_MAX)) == -1)
 			{
@@ -209,14 +212,17 @@ process_path(const char *path, const struct stat *statptr, int fileflag, struct 
 	return 0;
 }
 
+/*
+ * Copy livecd files to new root fs
+ */
 boolean_t
 copy_files (void)
 {
 	char path[PATH_MAX];
 
-	if (realpath(FILE_PATH, path) == NULL)
+	if (realpath(cdrom_path, path) == NULL)
 	{
-		fprintf (stderr, "Unable to resolve " FILE_PATH "\n");
+		perror ("Unable to resolve cdrom path");
 		return B_FALSE;
 	}
 
@@ -228,3 +234,4 @@ copy_files (void)
 
 	return B_TRUE;
 }
+

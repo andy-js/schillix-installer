@@ -22,12 +22,6 @@
  * (c) Copyright 2013 - Andrew Stormont <andyjstormont@gmail.com>
  */
 
-#include <libzfs.h>
-
-libzfs_handle_t *libzfs_handle;
-boolean_t disk_in_use(char *disk);
-boolean_t create_root_partition (char *disk);
-boolean_t create_root_vtoc (char *disk);
-boolean_t create_root_pool (char *disk);
-boolean_t create_root_datasets (void);
-boolean_t mount_root_datasets (void);
+#define DEFAULT_RPOOL_NAME "syspool"
+#define DEFAULT_MNT_POINT "/mnt"
+#define DEFAULT_CDROM_PATH "/.cdrom"

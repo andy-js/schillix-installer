@@ -38,92 +38,7 @@
 
 #define DISK_PATH "/dev/rdsk"
 
-/*
- * Return a list of all suitable disks
- */
-char **
-get_suitable_disks (void)
-{
-	DIR *dir;
-	struct dirent *dp;
-	int i, fd, len, removable, nodisks = 0;
-	char path[PATH_MAX], **buf, **disks = NULL;
-
-	if ((dir = opendir (DISK_PATH)) == NULL)
-	{
-		perror ("Unable to open " DISK_PATH);
-		return NULL;
-	}
-
-	while ((dp = readdir (dir)) != NULL)
-	{
-		/*
-		 * We're looking for the whole disk which is *s2 on sparc and *p0 on x86
-		 */
-		if ((dp->d_name[0] != 'c' || (len = strlen (dp->d_name)) < 2) ||
-#ifdef sparc
-		    (dp->d_name[len - 2] != 's' || dp->d_name[len - 1] != '2'))
-#else
-		    (dp->d_name[len - 2] != 'p' || dp->d_name[len - 1] != '0'))
-#endif
-			continue;
-
-		(void) sprintf (path, DISK_PATH "/%s", dp->d_name);
-
-		if ((fd = open (path, O_RDONLY)) == -1)
-		{
-			/*
-			 * If the devlink doesn't actually go anywhere we ignore it
-			 */
-			if (errno != ENOENT && errno != ENXIO)
-				fprintf (stderr, "Unable to probe disk %s: %s\n",
-				    dp->d_name, strerror (errno));
-			continue;
-		}
-
-		/*
-		 * Don't bother showing removable media right now
-		 */
-		if (ioctl (fd, DKIOCREMOVABLE, &removable) == 0 && removable)
-		{
-			(void) close (fd);
-			continue;
-		}
-
-		(void) close (fd);
-
-		/*
-		 * Allocate enough memory for the next disk and the NULL terminator
-		 */
-		if ((buf = (char **)realloc ((void *)disks, sizeof (char *) * (nodisks + 2))) == NULL)
-			goto nomem;
-
-		disks = buf;
-
-		/*
-		 * Copy the device name but drop the whole-device suffix (s2/p0)
-		 */
-		if ((disks[nodisks] = malloc (sizeof (char) * (len - 2))) == NULL)
-			goto nomem;
-
-		strncpy (disks[nodisks++], dp->d_name, len - 2);
-	}
-
-	(void) closedir (dir);
-
-	disks[nodisks] = NULL;
-	return disks;
-
-nomem:
-	(void) closedir (dir);
-
-	perror ("Unable to allocate memory");
-
-	for (i = 0; i < nodisks; i++)
-		free (disks[i]);
-	free (disks);
-	return NULL;
-}
+extern char rpool_name[32];
 
 /*
  * Determine if a disk is in use already
@@ -323,7 +238,6 @@ create_root_vtoc (char *disk)
 	return B_TRUE;
 }
 
-#define ROOT_POOL "syspool"
 #define ROOT_NAME "schillix"
 
 /*
@@ -332,7 +246,7 @@ create_root_vtoc (char *disk)
 boolean_t
 create_root_pool (char *disk)
 {
-	char path[PATH_MAX];
+	char disk_path[PATH_MAX], pool_path[PATH_MAX];
 	nvlist_t *vdev, *nvroot, *props, *fsprops;
 #ifdef ZPOOL_CREATE_ALTROOT_BUG
 	zfs_handle_t *zfs_handle;
@@ -347,9 +261,9 @@ create_root_pool (char *disk)
 		return B_FALSE;
 	}
 
-	(void) sprintf (path, DISK_PATH "/%ss0", disk);
+	(void) sprintf (disk_path, DISK_PATH "/%ss0", disk);
 
-	if (nvlist_add_string(vdev, ZPOOL_CONFIG_PATH, path) != 0)
+	if (nvlist_add_string(vdev, ZPOOL_CONFIG_PATH, disk_path) != 0)
 	{
 		fprintf (stderr, "Unable to set vdev path\n");
 		(void) nvlist_free (vdev);
@@ -419,7 +333,9 @@ create_root_pool (char *disk)
 		return B_FALSE;
 	}
 
-	if (nvlist_add_string (fsprops, zfs_prop_to_name (ZFS_PROP_MOUNTPOINT), "/" ROOT_POOL) != 0)
+	(void) sprintf (pool_path, "/%s", rpool_name);
+
+	if (nvlist_add_string (fsprops, zfs_prop_to_name (ZFS_PROP_MOUNTPOINT), pool_path) != 0)
 	{
 		fprintf (stderr, "Unable to set root mountpoint\n");
 		(void) nvlist_free (vdev);
@@ -429,7 +345,7 @@ create_root_pool (char *disk)
 		return B_FALSE;
 	}
 
-	if (zpool_create (libzfs_handle, ROOT_POOL, nvroot, props, fsprops) == -1)
+	if (zpool_create (libzfs_handle, rpool_name, nvroot, props, fsprops) == -1)
 	{
 		fprintf (stderr, "Error creating rpool\n");
 		(void) nvlist_free (vdev);
@@ -443,7 +359,7 @@ create_root_pool (char *disk)
 	/*
 	 * Workaround a bug in libzfs which causes the root dataset to not inherit the altroot on creation.
 	 */
-	if ((zfs_handle = zfs_path_to_zhandle (libzfs_handle, ROOT_POOL, ZFS_TYPE_DATASET)) == NULL)
+	if ((zfs_handle = zfs_path_to_zhandle (libzfs_handle, rpool_name, ZFS_TYPE_DATASET)) == NULL)
 	{
 		fprintf (stderr, "Unable to get zfs handle\n");
 		(void) nvlist_free (vdev);
@@ -453,7 +369,7 @@ create_root_pool (char *disk)
 		return B_FALSE;
 	}
 
-	if (zfs_prop_set (zfs_handle, zfs_prop_to_name (ZFS_PROP_MOUNTPOINT), "/" ROOT_POOL) == -1)
+	if (zfs_prop_set (zfs_handle, zfs_prop_to_name (ZFS_PROP_MOUNTPOINT), pool_path) == -1)
 	{
 		fprintf (stderr, "Unable to set root mountpoint\n");
 		(void) nvlist_free (vdev);
@@ -477,6 +393,7 @@ create_root_pool (char *disk)
 boolean_t
 create_root_datasets (void)
 {
+	char path[PATH_MAX];
 	nvlist_t *fsprops;
 
 	/*
@@ -496,7 +413,9 @@ create_root_datasets (void)
 		return B_FALSE;
 	}
 
-	if (zfs_create (libzfs_handle, ROOT_POOL "/ROOT", ZFS_TYPE_DATASET, fsprops) != 0)
+	(void) sprintf (path, "%s/ROOT", rpool_name);
+
+	if (zfs_create (libzfs_handle, path, ZFS_TYPE_DATASET, fsprops) != 0)
 	{
 		fprintf (stderr, "Unable to create root datatset\n");
 		(void) nvlist_free (fsprops);
@@ -513,7 +432,9 @@ create_root_datasets (void)
 		return B_FALSE;
 	}
 
-	if (zfs_create (libzfs_handle, ROOT_POOL "/ROOT/" ROOT_NAME, ZFS_TYPE_DATASET, fsprops) != 0)
+	(void) sprintf (path, "%s/ROOT/" ROOT_NAME, rpool_name);
+
+	if (zfs_create (libzfs_handle, path, ZFS_TYPE_DATASET, fsprops) != 0)
 	{
 		fprintf (stderr, "Unable to create rootfs datatset\n");
 		(void) nvlist_free (fsprops);
@@ -530,7 +451,9 @@ create_root_datasets (void)
 		return B_FALSE;
 	}
 
-	if (zfs_create (libzfs_handle, ROOT_POOL "/export", ZFS_TYPE_DATASET, fsprops) != 0)
+	(void) sprintf (path, "%s/export", rpool_name);
+
+	if (zfs_create (libzfs_handle, path, ZFS_TYPE_DATASET, fsprops) != 0)
 	{
 		fprintf (stderr, "Unable to create export dataset\n");
 		(void) nvlist_free (fsprops);
@@ -544,7 +467,9 @@ create_root_datasets (void)
 		return B_FALSE;
 	}
 
-	if (zfs_create(libzfs_handle, ROOT_POOL "/export/home", ZFS_TYPE_DATASET, NULL) != 0)
+	(void) sprintf (path, "%s/export/home", rpool_name);
+
+	if (zfs_create(libzfs_handle, path, ZFS_TYPE_DATASET, NULL) != 0)
 	{
 		fprintf (stderr, "Unable to create home dataset\n");
 		(void) nvlist_free (fsprops);
@@ -558,7 +483,9 @@ create_root_datasets (void)
 		return B_FALSE;
 	}
 
-	if (zfs_create(libzfs_handle, ROOT_POOL "/export/home/schillix", ZFS_TYPE_DATASET, NULL) != 0)
+	(void) sprintf (path, "%s/export/home/schillix", rpool_name);
+
+	if (zfs_create(libzfs_handle, path, ZFS_TYPE_DATASET, NULL) != 0)
 	{
 		fprintf (stderr, "Unable to create schillix dataset\n");
 		(void) nvlist_free (fsprops);
@@ -569,12 +496,15 @@ create_root_datasets (void)
 	return B_TRUE;
 }
 
+/*
+ * Recursively mount datasets on new rpool
+ */
 boolean_t
 mount_root_datasets (void)
 {
 	zpool_handle_t *zpool_handle;
 
-	if ((zpool_handle = zpool_open (libzfs_handle, ROOT_POOL)) == NULL)
+	if ((zpool_handle = zpool_open (libzfs_handle, rpool_name)) == NULL)
 	{
 		fprintf (stderr, "Unable to open rpool\n");
 		return B_FALSE;
@@ -588,3 +518,4 @@ mount_root_datasets (void)
 
 	return B_TRUE;
 }
+
