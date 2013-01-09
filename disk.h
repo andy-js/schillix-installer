@@ -27,6 +27,6 @@
 boolean_t disk_in_use(libzfs_handle_t *zhp, char *disk);
 boolean_t create_root_partition (char *disk);
 boolean_t create_root_vtoc (char *disk);
-boolean_t create_root_pool (libzfs_handle_t *zhp, char *disk);
-boolean_t create_root_datasets (libzfs_handle_t *zhp);
-boolean_t mount_root_datasets (libzfs_handle_t *zhp);
+boolean_t create_root_pool (libzfs_handle_t *zhp, char *disk, char *pool);
+boolean_t create_root_datasets (libzfs_handle_t *zhp, char *pool);
+boolean_t mount_root_datasets (libzfs_handle_t *zhp, char *pool);

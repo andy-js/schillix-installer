@@ -32,7 +32,6 @@
 #include "copy.h"
 
 char program_name[] = "schillix-install";
-char rpool_name[32] = DEFAULT_RPOOL_NAME;
 char temp_mount[PATH_MAX] = DEFAULT_MNT_POINT;
 char cdrom_path[PATH_MAX] = DEFAULT_CDROM_PATH;
 
@@ -40,7 +39,7 @@ char cdrom_path[PATH_MAX] = DEFAULT_CDROM_PATH;
  * Prepare the disk so that a schillix filesystem can be created on it
  */
 boolean_t
-format_disk (libzfs_handle_t *libzfs_handle, char *disk)
+format_disk (libzfs_handle_t *libzfs_handle, char *disk, char *pool)
 {
 	char c;
 
@@ -75,13 +74,13 @@ format_disk (libzfs_handle_t *libzfs_handle, char *disk)
 		return B_FALSE;
 	}
 
-	if (create_root_pool (libzfs_handle, disk) == B_FALSE)
+	if (create_root_pool (libzfs_handle, disk, pool) == B_FALSE)
 	{
 		fprintf (stderr, "Unable to create root pool on disk\n");
 		return B_FALSE;
 	}
 
-	if (create_root_datasets (libzfs_handle) == B_FALSE)
+	if (create_root_datasets (libzfs_handle, pool) == B_FALSE)
 	{
 		fprintf (stderr, "Unable to create root datasets\n");
 		return B_FALSE;
@@ -129,7 +128,7 @@ usage (int retval)
 int
 main (int argc, char **argv)
 {
-	char c, disk[PATH_MAX] = { '\0' };
+	char c, disk[PATH_MAX] = { '\0' }, rpool[32] = DEFAULT_RPOOL_NAME;
 	int i;
 	libzfs_handle_t *libzfs_handle;
 
@@ -146,7 +145,7 @@ main (int argc, char **argv)
 					fprintf (stderr, "No rpool name given\n");
 					usage (EXIT_FAILURE);
 				}
-				strcpy (rpool_name, optarg);
+				strcpy (rpool, optarg);
 				break;
 			case 'm':
 				if (optarg == NULL)
@@ -203,7 +202,7 @@ main (int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
-	if (format_disk (libzfs_handle, disk) == B_FALSE)
+	if (format_disk (libzfs_handle, disk, rpool) == B_FALSE)
 	{
 		fprintf (stderr, "Unable to complete disk format\n");
 		return EXIT_FAILURE;
@@ -211,7 +210,7 @@ main (int argc, char **argv)
 
 	printf ("Mounting filesystem...\n");
 
-	if (mount_root_datasets (libzfs_handle) == B_FALSE)
+	if (mount_root_datasets (libzfs_handle, rpool) == B_FALSE)
 	{
 		fprintf (stderr, "Unable to mount root filessytem\n");
 		return EXIT_FAILURE;
