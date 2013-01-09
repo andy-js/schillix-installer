@@ -23,11 +23,18 @@
 # (c) Copyright 2013 - Andrew Stormont <andyjstormont@gmail.com>
 #
 
+PROG = schillix-install
+OBJS = main.o disk.o copy.o
+
 CFLAGS = -Wall -Werror -DZPOOL_CREATE_ALTROOT_BUG
 LIBS = -lparted -ladm -lnvpair -lzfs -lsendfile
 
-schillix-install:
-	gcc $(CFLAGS) $(LIBS) main.c disk.c copy.c -o schillix-install
+$(PROG): $(OBJS)
+	$(CC) $(OBJS) $(LIBS) -o $(PROG)
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f schillix-install
+	rm -f $(PROG) $(OBJS)
+
