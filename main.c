@@ -26,6 +26,7 @@
 #include <libzfs.h>
 
 #include "disk.h"
+#include "copy.h"
 
 char program_name[] = "schillix-install";
 libzfs_handle_t *libzfs_handle = NULL;
@@ -149,9 +150,19 @@ main (int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
+	printf ("Mounting filesystem...\n");
+
 	if (mount_root_datasets () == B_FALSE)
 	{
 		fprintf (stderr, "Unable to mount root filessytem\n");
+		return EXIT_FAILURE;
+	}
+
+	printf ("Copying files...\n");
+
+	if (copy_files () == B_FALSE)
+	{
+		fprintf (stderr, "Unable to copy schillix files\n");
 		return EXIT_FAILURE;
 	}
 

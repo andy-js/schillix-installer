@@ -24,10 +24,10 @@
 #
 
 CFLAGS = -Wall -Werror -DZPOOL_CREATE_ALTROOT_BUG
-LIBS = -lparted -ladm -lnvpair -lzfs
+LIBS = -lparted -ladm -lnvpair -lzfs -lsendfile
 
 schillix-install:
-	gcc $(CFLAGS) $(LIBS) main.c disk.c -o schillix-install
+	gcc $(CFLAGS) $(LIBS) main.c disk.c copy.c -o schillix-install
 
 clean:
 	rm -f schillix-install

@@ -153,6 +153,7 @@ disk_in_use (char *disk)
 	if (zpool_in_use(libzfs_handle, fd, &poolstate, &poolname, &inuse) == -1)
 	{
 		fprintf (stderr, "Unable to determine if disk is in a zpool\n");
+		(void) close (fd);
 		return B_TRUE;
 	}
 
