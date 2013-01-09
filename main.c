@@ -32,7 +32,6 @@
 #include "copy.h"
 
 char program_name[] = "schillix-install";
-char disk_path[PATH_MAX] = "";
 char rpool_name[32] = DEFAULT_RPOOL_NAME;
 char temp_mount[PATH_MAX] = DEFAULT_MNT_POINT;
 char cdrom_path[PATH_MAX] = DEFAULT_CDROM_PATH;
@@ -130,7 +129,7 @@ usage (int retval)
 int
 main (int argc, char **argv)
 {
-	char c;
+	char c, disk[PATH_MAX] = { '\0' };
 	int i;
 	libzfs_handle_t *libzfs_handle;
 
@@ -181,9 +180,9 @@ main (int argc, char **argv)
 
 	for (i = optind; i < argc; i++)
 	{
-		if (disk_path[0] == '\0')
+		if (disk[0] == '\0')
 		{
-			strcpy (disk_path, argv[i]);
+			strcpy (disk, argv[i]);
 		}
 		else
 		{
@@ -192,7 +191,7 @@ main (int argc, char **argv)
 		}
 	}
 
-	if (disk_path[0] == '\0')
+	if (disk[0] == '\0')
 	{
 		fprintf (stderr, "Error: No disk specified\n");
 		usage (EXIT_FAILURE);
@@ -204,7 +203,7 @@ main (int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
-	if (format_disk (libzfs_handle, disk_path) == B_FALSE)
+	if (format_disk (libzfs_handle, disk) == B_FALSE)
 	{
 		fprintf (stderr, "Unable to complete disk format\n");
 		return EXIT_FAILURE;
