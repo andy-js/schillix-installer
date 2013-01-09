@@ -36,60 +36,6 @@ char temp_mount[PATH_MAX] = DEFAULT_MNT_POINT;
 char cdrom_path[PATH_MAX] = DEFAULT_CDROM_PATH;
 
 /*
- * Prepare the disk so that a schillix filesystem can be created on it
- */
-boolean_t
-format_disk (libzfs_handle_t *libzfs_handle, char *disk, char *pool)
-{
-	char c;
-
-	/*
-	 * Warn the user before touching the disk
-	 */
-	printf ("All data on %s will be destroyed.  Continue? [yn] ", disk);
-	while (scanf ("%c", &c) == 0 || (c != 'y' && c != 'n'))
-		printf ("\rContinue? [yn] ");
-
-	if (c == 'n')
-	{
-		fprintf (stderr, "User aborted format\n");
-		return B_FALSE;
-	}
-
-	if (disk_in_use (libzfs_handle, disk) == B_TRUE)
-	{
-		fprintf (stderr, "Disk appears to be in use already. Abort\n");
-		return B_FALSE;
-	}
-
-	if (create_root_partition (disk) == B_FALSE)
-	{
-		fprintf (stderr, "Unable to create schillix boot partition\n");
-		return B_FALSE;
-	}
-
-	if (create_root_vtoc (disk) == B_FALSE)
-	{
-		fprintf (stderr, "Unable to create new slices on disk\n");
-		return B_FALSE;
-	}
-
-	if (create_root_pool (libzfs_handle, disk, pool) == B_FALSE)
-	{
-		fprintf (stderr, "Unable to create root pool on disk\n");
-		return B_FALSE;
-	}
-
-	if (create_root_datasets (libzfs_handle, pool) == B_FALSE)
-	{
-		fprintf (stderr, "Unable to create root datasets\n");
-		return B_FALSE;
-	}
-
-	return B_TRUE;
-}
-
-/*
  * Print usage and exit
  */
 void
@@ -196,19 +142,73 @@ main (int argc, char **argv)
 		usage (EXIT_FAILURE);
 	}
 
+	/*
+	 * Get libzfs handle before outputting anything to stdout/stderr
+	 * otherwise we won't be able to get it later (seriously)
+	 */
 	if ((libzfs_handle = libzfs_init ()) == NULL)
 	{
 		fprintf (stderr, "Unable to get libzfs handle\n");
 		return EXIT_FAILURE;
 	}
 
-	if (format_disk (libzfs_handle, disk, rpool) == B_FALSE)
+	/*
+	 * Warn the user before touching the disk
+	 */
+	printf ("All data on %s will be destroyed.  Continue? [yn] ", disk);
+	while (scanf ("%c", &c) == 0 || (c != 'y' && c != 'n'))
+		printf ("\rContinue? [yn] ");
+
+	if (c == 'n')
 	{
-		fprintf (stderr, "Unable to complete disk format\n");
-		return EXIT_FAILURE;
+		fprintf (stderr, "User aborted format\n");
+		return B_FALSE;
 	}
 
-	printf ("Mounting filesystem...\n");
+	if (disk_in_use (libzfs_handle, disk) == B_TRUE)
+	{
+		fprintf (stderr, "Disk appears to be in use already. Abort\n");
+		return B_FALSE;
+	}
+
+	/*
+	 * Reformat disk
+	 */
+	puts ("Reformatting disk...");
+
+	if (create_root_partition (disk) == B_FALSE)
+	{
+		fprintf (stderr, "Unable to create schillix boot partition\n");
+		return B_FALSE;
+	}
+
+	if (create_root_vtoc (disk) == B_FALSE)
+	{
+		fprintf (stderr, "Unable to create new slices on disk\n");
+		return B_FALSE;
+	}
+
+	/*
+	 * Create new ZFS filesystem
+	 */
+	puts ("Creating new filesystem...");
+
+	if (create_root_pool (libzfs_handle, disk, rpool) == B_FALSE)
+	{
+		fprintf (stderr, "Unable to create root pool on disk\n");
+		return B_FALSE;
+	}
+
+	if (create_root_datasets (libzfs_handle, rpool) == B_FALSE)
+	{
+		fprintf (stderr, "Unable to create root datasets\n");
+		return B_FALSE;
+	}
+
+	/*
+	 * Mount new filesystem and copy files
+	 */
+	puts ("Mounting filesystem...");
 
 	if (mount_root_datasets (libzfs_handle, rpool) == B_FALSE)
 	{
