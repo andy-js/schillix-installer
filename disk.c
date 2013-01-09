@@ -44,7 +44,7 @@ extern char rpool_name[32];
  * Determine if a disk is in use already
  */
 boolean_t
-disk_in_use (char *disk)
+disk_in_use (libzfs_handle_t *libzfs_handle, char *disk)
 {
 	int fd;
 	char *poolname, path[PATH_MAX];
@@ -244,7 +244,7 @@ create_root_vtoc (char *disk)
  * Create root ZFS pool on first slice (s0)
  */
 boolean_t
-create_root_pool (char *disk)
+create_root_pool (libzfs_handle_t *libzfs_handle, char *disk)
 {
 	char disk_path[PATH_MAX], pool_path[PATH_MAX];
 	nvlist_t *vdev, *nvroot, *props, *fsprops;
@@ -391,7 +391,7 @@ create_root_pool (char *disk)
  * Create root ZFS filesystem on first slice (s0)
  */
 boolean_t
-create_root_datasets (void)
+create_root_datasets (libzfs_handle_t *libzfs_handle)
 {
 	char path[PATH_MAX];
 	nvlist_t *fsprops;
@@ -500,7 +500,7 @@ create_root_datasets (void)
  * Recursively mount datasets on new rpool
  */
 boolean_t
-mount_root_datasets (void)
+mount_root_datasets (libzfs_handle_t *libzfs_handle)
 {
 	zpool_handle_t *zpool_handle;
 

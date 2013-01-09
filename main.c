@@ -36,13 +36,12 @@ char disk_path[PATH_MAX] = "";
 char rpool_name[32] = DEFAULT_RPOOL_NAME;
 char temp_mount[PATH_MAX] = DEFAULT_MNT_POINT;
 char cdrom_path[PATH_MAX] = DEFAULT_CDROM_PATH;
-libzfs_handle_t *libzfs_handle = NULL;
 
 /*
  * Prepare the disk so that a schillix filesystem can be created on it
  */
 boolean_t
-format_disk (char *disk)
+format_disk (libzfs_handle_t *libzfs_handle, char *disk)
 {
 	char c;
 
@@ -59,7 +58,7 @@ format_disk (char *disk)
 		return B_FALSE;
 	}
 
-	if (disk_in_use (disk) == B_TRUE)
+	if (disk_in_use (libzfs_handle, disk) == B_TRUE)
 	{
 		fprintf (stderr, "Disk appears to be in use already. Abort\n");
 		return B_FALSE;
@@ -77,13 +76,13 @@ format_disk (char *disk)
 		return B_FALSE;
 	}
 
-	if (create_root_pool (disk) == B_FALSE)
+	if (create_root_pool (libzfs_handle, disk) == B_FALSE)
 	{
 		fprintf (stderr, "Unable to create root pool on disk\n");
 		return B_FALSE;
 	}
 
-	if (create_root_datasets () == B_FALSE)
+	if (create_root_datasets (libzfs_handle) == B_FALSE)
 	{
 		fprintf (stderr, "Unable to create root datasets\n");
 		return B_FALSE;
@@ -133,6 +132,7 @@ main (int argc, char **argv)
 {
 	char c;
 	int i;
+	libzfs_handle_t *libzfs_handle;
 
 	/*
 	 * Parse command line arguments
@@ -198,17 +198,13 @@ main (int argc, char **argv)
 		usage (EXIT_FAILURE);
 	}
 
-	/*
-	 * XXX: libzfs_init won't work unless it's called early on
-	 * Find out why so we can get rid of this nasty global
-	 */
 	if ((libzfs_handle = libzfs_init ()) == NULL)
 	{
 		fprintf (stderr, "Unable to get libzfs handle\n");
 		return EXIT_FAILURE;
 	}
 
-	if (format_disk (disk_path) == B_FALSE)
+	if (format_disk (libzfs_handle, disk_path) == B_FALSE)
 	{
 		fprintf (stderr, "Unable to complete disk format\n");
 		return EXIT_FAILURE;
@@ -216,7 +212,7 @@ main (int argc, char **argv)
 
 	printf ("Mounting filesystem...\n");
 
-	if (mount_root_datasets () == B_FALSE)
+	if (mount_root_datasets (libzfs_handle) == B_FALSE)
 	{
 		fprintf (stderr, "Unable to mount root filessytem\n");
 		return EXIT_FAILURE;
@@ -231,7 +227,6 @@ main (int argc, char **argv)
 	}
 
 	(void) libzfs_fini (libzfs_handle);
-	libzfs_handle = NULL;
 
 	return EXIT_SUCCESS;
 }
