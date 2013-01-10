@@ -39,13 +39,98 @@ extern char cdrom_path[PATH_MAX];
 #define STAFF_GROUP	10
 
 /*
+ * Copy a file to a new destination
+ */
+static boolean_t
+copy_file (const char *path, const char *dest, const struct stat *statptr)
+{
+	int in_fd, out_fd;
+	struct stat in_stat;
+	off_t offset = 0;
+
+	/*
+	 * Stat the file if the caller hasn't
+	 */
+	if (statptr == NULL)
+	{
+		if (stat (path, &in_stat) == -1)
+		{
+			fprintf (stderr, "Unable to stat file %s: %s\n", path, strerror (errno));
+			return B_FALSE;
+		}
+	}
+	else
+		in_stat = *statptr;
+
+	/*
+	 * Open the files
+	 */
+	if ((in_fd = open (path, O_RDONLY)) == -1)
+	{
+		fprintf (stderr, "Unable to open file %s: %s\n", path, strerror (errno));
+		return B_FALSE;
+	}
+
+	if ((out_fd = creat (dest, in_stat.st_mode)) == -1)
+	{
+		if (errno == EEXIST)
+		{
+			if (unlink (dest) == -1)
+			{
+				fprintf (stderr, "Unable to remove file %s: %s\n", dest, strerror (errno));
+				(void) close (in_fd);
+				return B_FALSE;
+			}
+
+			if ((out_fd = creat (dest, in_stat.st_mode)) == -1)
+			{
+				fprintf (stderr, "Unable to recreate file %s: %s\n", dest, strerror (errno));
+				(void) close (in_fd);
+				return B_FALSE;
+			}
+		}
+		else
+		{
+			fprintf (stderr, "Unable to create file %s: %s\n", dest, strerror (errno));
+			(void) close (in_fd);
+			return B_FALSE;
+		}
+	}
+
+	/*
+	 * Copy ownership
+	 */
+	if (chown (dest, in_stat.st_uid, in_stat.st_gid) == -1)
+	{
+		fprintf (stderr, "Unable to chown file %s: %s\n", dest, strerror (errno));
+		(void) close (in_fd);
+		(void) close (out_fd);
+		return B_FALSE;
+	}
+
+	/*
+	 * Copy contents over
+	 */
+	if (sendfile (out_fd, in_fd, &offset, in_stat.st_size) == -1)
+	{
+		fprintf (stderr, "Unable to copy file %s: %s\n", path, strerror (errno));
+		(void) close (in_fd);
+		(void) close (out_fd);
+		return B_FALSE;
+	}
+
+	(void) close (in_fd);
+	(void) close (out_fd);
+	return B_TRUE;
+}
+
+/*
  * Install a file/directory/symlink.  Called by copy_files
  */
 static int
 process_path (const char *path, const struct stat *statptr, int fileflag, struct FTW *pftw)
 {
-	int in_fd, out_fd, read;
-	off_t offset = 0;
+	int read;
 	char base[PATH_MAX], dest[PATH_MAX], target[PATH_MAX];
 
 	/*
@@ -66,59 +151,12 @@ process_path (const char *path, const struct stat *statptr, int fileflag, struct
 			 */
 			(void) sprintf (dest, "%s/%s", temp_mount, path + strlen (base));
 
-			if ((out_fd = creat (dest, statptr->st_mode)) == -1)
+			if (copy_file (path, dest, statptr) == B_FALSE)
 			{
-				/*
-				 * If the file exists recreate it
-				 */
-				if (errno == EEXIST)
-				{
-					if (unlink (dest) == -1)
-					{
-						fprintf (stderr, "Unable to remove file %s: %s\n", dest, strerror (errno));
-						return 1;
-					}
-
-					if ((out_fd = creat (dest, statptr->st_mode)) == -1)
-					{
-						fprintf (stderr, "Unable to recreate file %s: %s\n", dest, strerror (errno));
-						return 1;
-					}
-				}
-				else
-				{
-					fprintf (stderr, "Unable to create file %s: %s\n", dest, strerror (errno));
-					return 1;
-				}
-			}
-
-			if (chown (dest, statptr->st_uid, statptr->st_gid) == -1)
-			{
-				fprintf (stderr, "Unable to chown file %s: %s\n", dest, strerror (errno));
-				(void) close (out_fd);
+				fprintf (stderr, "Unable to copy %s\n", path);
 				return 1;
 			}
 
-			/*
-			 * Copy contents over
-			 */
-			if ((in_fd = open (path, O_RDONLY)) == -1)
-			{
-				fprintf (stderr, "Unable to open file %s: %s\n", path, strerror (errno));
-				(void) close (out_fd);
-				return 1;
-			}
-
-			if (sendfile (out_fd, in_fd, &offset, statptr->st_size) == -1)
-			{
-				fprintf (stderr, "Unable to copy file %s: %s\n", path, strerror (errno));
-				(void) close (in_fd);
-				(void) close (out_fd);
-				return 1;
-			}
-
-			(void) close (in_fd);
-			(void) close (out_fd);
 			break;
 
 		case FTW_D:
@@ -244,11 +282,8 @@ copy_files (void)
 boolean_t
 copy_grub (char *mnt, char *rpool)
 {
-	int in_fd, out_fd;
-	char path[PATH_MAX];
-	struct stat in_stat;
+	char dest[PATH_MAX], path[PATH_MAX];
 	mode_t mode = 0;
-	off_t offset;
 
 	/*
 	 * 0755. U = RWX, G = RX, A = X
@@ -260,15 +295,15 @@ copy_grub (char *mnt, char *rpool)
 	/*
 	 * ZFS boot pools have one global boot directory
 	 */
-	(void) sprintf (path, "%s/%s/boot", mnt, rpool); 
+	(void) sprintf (dest, "%s/%s/boot", mnt, rpool); 
 
-	if (mkdir (path, mode) == -1)
+	if (mkdir (dest, mode) == -1)
 	{
 		perror ("Unable to create boot directory");
 		return B_FALSE;
 	}
 
-	if (chown (path, ROOT_USER, STAFF_GROUP) == -1)
+	if (chown (dest, ROOT_USER, STAFF_GROUP) == -1)
 	{
 		perror ("Unable to chown boot directory");
 		return B_FALSE;
@@ -277,15 +312,15 @@ copy_grub (char *mnt, char *rpool)
 	/*
 	 * Create grub directory
 	 */
-	(void) sprintf (path, "%s/%s/boot/grub", mnt, rpool);
+	(void) sprintf (dest, "%s/%s/boot/grub", mnt, rpool);
 
-	if (mkdir (path, mode) == -1)
+	if (mkdir (dest, mode) == -1)
 	{
 		perror ("Unable to create grub directory");
 		return B_FALSE;
 	}
 
-	if (chown (path, ROOT_USER, STAFF_GROUP) == -1)
+	if (chown (dest, ROOT_USER, STAFF_GROUP) == -1)
 	{
 		perror ("Unable to chown grub directory");
 		return B_FALSE;
@@ -295,142 +330,38 @@ copy_grub (char *mnt, char *rpool)
 	 * Copy /grub/capability
 	 */
 	(void) sprintf (path, "%s/boot/grub/capability", mnt);
+	(void) sprintf (dest, "%s/%s/boot/grub/capability", mnt, rpool);
 
-	if ((in_fd = open (path, O_RDONLY)) == -1)
+	if (copy_file (path, dest, NULL) == B_FALSE)
 	{
-		fprintf (stderr, "Unable to open %s: %s\n", path, strerror (errno));
+		fprintf (stderr, "Unable to copy %s\n", path);
 		return B_FALSE;
 	}
-
-	if (fstat (in_fd, &in_stat) == -1)
-	{
-		fprintf (stderr, "Unable to stat %s: %s\n", path, strerror (errno));
-		(void) close (in_fd);
-		return B_FALSE;
-	}
-
-	(void) sprintf (path, "%s/%s/boot/grub/capability", mnt, rpool);
-
-	if ((out_fd = creat (path, in_stat.st_mode)) == -1)
-	{
-		fprintf (stderr, "Unable to open %s: %s\n", path, strerror (errno));
-		(void) close (in_fd);
-		return B_FALSE;
-	}
-
-	if (fchown (out_fd, ROOT_USER, STAFF_GROUP) == -1)
-	{
-		fprintf (stderr, "Unable to chown %s: %s\n", path, strerror (errno));
-		(void) close (in_fd);
-		return B_FALSE;
-	}
-
-	offset = 0;
-
-	if (sendfile (out_fd, in_fd, &offset, in_stat.st_size) == -1)
-	{
-		fprintf (stderr, "Unable to copy %s: %s\n", path, strerror (errno));
-		(void) close (in_fd);
-		(void) close (out_fd);
-		return B_FALSE;
-	}
-	
-	(void) close (in_fd);
-	(void) close (out_fd);
 
 	/*
 	 * Copy /grub/menu.lst
 	 */
 	(void) sprintf (path, "%s/boot/grub/menu.lst", mnt);
+	(void) sprintf (dest, "%s/%s/boot/grub/menu.lst", mnt, rpool);
 
-	if ((in_fd = open (path, O_RDONLY)) == -1)
+	if (copy_file (path, dest, NULL) == B_FALSE)
 	{
-		fprintf (stderr, "Unable to open %s: %s\n", path, strerror (errno));
+		fprintf (stderr, "Unable to copy %s\n", path);
 		return B_FALSE;
 	}
-
-	if (fstat (in_fd, &in_stat) == -1)
-	{
-		fprintf (stderr, "Unable to stat %s: %s\n", path, strerror (errno));
-		(void) close (in_fd);
-		return B_FALSE;
-	}
-
-	(void) sprintf (path, "%s/%s/boot/grub/menu.lst", mnt, rpool);
-
-	if ((out_fd = creat (path, in_stat.st_mode)) == -1)
-	{
-		fprintf (stderr, "Unable to open %s: %s\n", path, strerror (errno));
-		(void) close (in_fd);
-		return B_FALSE;
-	}
-
-	if (fchown (out_fd, ROOT_USER, STAFF_GROUP) == -1)
-	{
-		fprintf (stderr, "Unable to chown %s: %s\n", path, strerror (errno));
-		(void) close (in_fd);
-		return B_FALSE;
-	}
-
-	offset = 0;
-
-	if (sendfile (out_fd, in_fd, &offset, in_stat.st_size) == -1)
-	{
-		fprintf (stderr, "Unable to copy %s: %s\n", path, strerror (errno));
-		(void) close (in_fd);
-		(void) close (out_fd);
-		return B_FALSE;
-	}
-	
-	(void) close (in_fd);
-	(void) close (out_fd);
 
 	/*
 	 * Copy /grub/splash.xpm.gz
 	 */
 	(void) sprintf (path, "%s/boot/grub/splash.xpm.gz", mnt);
+	(void) sprintf (dest, "%s/%s/boot/grub/splash.xpm.gz", mnt, rpool);
 
-	if ((in_fd = open (path, O_RDONLY)) == -1)
+	if (copy_file (path, dest, NULL) == B_FALSE)
 	{
-		fprintf (stderr, "Unable to open %s: %s\n", path, strerror (errno));
+		fprintf (stderr, "Unable to copy %s\n", path);
 		return B_FALSE;
 	}
 
-	if (fstat (in_fd, &in_stat) == -1)
-	{
-		fprintf (stderr, "Unable to stat %s: %s\n", path, strerror (errno));
-		(void) close (in_fd);
-		return B_FALSE;
-	}
-
-	(void) sprintf (path, "%s/%s/boot/grub/splash.xpm.gz", mnt, rpool);
-
-	if ((out_fd = creat (path, in_stat.st_mode)) == -1)
-	{
-		fprintf (stderr, "Unable to open %s: %s\n", path, strerror (errno));
-		(void) close (in_fd);
-		return B_FALSE;
-	}
-
-	if (fchown (out_fd, ROOT_USER, STAFF_GROUP) == -1)
-	{
-		fprintf (stderr, "Unable to chown %s: %s\n", path, strerror (errno));
-		(void) close (in_fd);
-		return B_FALSE;
-	}
-
-	offset = 0;
-
-	if (sendfile (out_fd, in_fd, &offset, in_stat.st_size) == -1)
-	{
-		fprintf (stderr, "Unable to copy %s: %s\n", path, strerror (errno));
-		(void) close (in_fd);
-		(void) close (out_fd);
-		return B_FALSE;
-	}
-	
-	(void) close (in_fd);
-	(void) close (out_fd);
 	return B_TRUE;
 }
 
