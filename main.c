@@ -76,7 +76,7 @@ usage (int retval)
 int
 main (int argc, char **argv)
 {
-	char c, *cmd, disk[PATH_MAX] = { '\0' }, rpool[ZPOOL_MAXNAMELEN] = DEFAULT_RPOOL_NAME;
+	char c, disk[PATH_MAX] = { '\0' }, rpool[ZPOOL_MAXNAMELEN] = DEFAULT_RPOOL_NAME;
 	int i;
 	DIR *dir;
 	libzfs_handle_t *libzfs_handle;
@@ -219,14 +219,11 @@ main (int argc, char **argv)
 	if (c == 'n')
 	{
 		fprintf (stderr, "User aborted format\n");
-		return B_FALSE;
+		return EXIT_FAILURE;
 	}
 
 	if (disk_in_use (libzfs_handle, disk) == B_TRUE)
-	{
-		fprintf (stderr, "Error: Disk appears to be in use already\n");
-		return B_FALSE;
-	}
+		return EXIT_FAILURE;
 
 	/*
 	 * Reformat disk
@@ -234,16 +231,10 @@ main (int argc, char **argv)
 	puts ("Reformatting disk...");
 
 	if (create_root_partition (disk) == B_FALSE)
-	{
-		fprintf (stderr, "Error: Unable to create boot partition\n");
-		return B_FALSE;
-	}
+		return EXIT_FAILURE;
 
 	if (create_root_vtoc (disk) == B_FALSE)
-	{
-		fprintf (stderr, "Error: Unable to create new slices on disk\n");
-		return B_FALSE;
-	}
+		return EXIT_FAILURE;
 
 	/*
 	 * Create new ZFS filesystem
@@ -251,16 +242,10 @@ main (int argc, char **argv)
 	puts ("Creating new filesystem...");
 
 	if (create_root_pool (libzfs_handle, disk, rpool) == B_FALSE)
-	{
-		fprintf (stderr, "Error: Unable to create new rpool\n");
-		return B_FALSE;
-	}
+		return EXIT_FAILURE;
 
 	if (create_root_datasets (libzfs_handle, rpool) == B_FALSE)
-	{
-		fprintf (stderr, "Error: Unable to create root datasets\n");
-		return B_FALSE;
-	}
+		return EXIT_FAILURE;
 
 	/*
 	 * Mount new filesystem and copy files
@@ -268,74 +253,29 @@ main (int argc, char **argv)
 	puts ("Mounting filesystem...");
 
 	if (mount_root_datasets (libzfs_handle, rpool) == B_FALSE)
-	{
-		fprintf (stderr, "Error: Unable to mount root filesystem\n");
 		return EXIT_FAILURE;
-	}
 
 	printf ("Copying files...\n");
 
 	if (copy_files () == B_FALSE)
-	{
-		fprintf (stderr, "Error: Unable to copy livecd files\n");
 		return EXIT_FAILURE;
-	}
 
 	if (copy_grub (temp_mount, rpool) == B_FALSE)
-	{
-		fprintf (stderr, "Error: Unable to copy boot files\n");
 		return EXIT_FAILURE;
-	}
 
 	/*
-	 * Final steps required to create a bootable system
-	 * Usage of system(3c) makes me feel dirty - find
-	 * out how these utilities do what they do and copy it
+	 * Install grub to mbr, create boot archive, etc
 	 */
 	puts ("Finishing up...");
 
-	if (asprintf (&cmd, "/usr/sbin/installgrub -mf %s/boot/grub/stage1 "
-		"%s/boot/grub/stage2 %ss0", temp_mount, temp_mount, disk) == NULL)
-	{
-		fprintf (stderr, "Error: out of memory\n");
+	if (config_grub (temp_mount, disk) == B_FALSE)
 		return EXIT_FAILURE;
-	}
 
-	if (system (cmd) != 0)
-	{
-		fprintf (stderr, "Error: installgrub failed\n");
+	if (config_devfs (temp_mount) == B_FALSE)
 		return EXIT_FAILURE;
-	}
 
-	free (cmd);
-
-	if (asprintf (&cmd, "/usr/sbin/devfsadm -r %s", temp_mount) == NULL)
-	{
-		fprintf (stderr, "Error: out of memory\n");
+	if (config_bootadm (temp_mount) == B_FALSE)
 		return EXIT_FAILURE;
-	}
-
-	if (system (cmd) != 0)
-	{
-		fprintf (stderr, "Error: devfsadm failed\n");
-		return EXIT_FAILURE;
-	}
-
-	free (cmd);
-
-	if (asprintf (&cmd, "/usr/sbin/bootadm update-archive -R %s\n", temp_mount) == NULL)
-	{
-		fprintf (stderr, "Error: out of memory\n");
-		return EXIT_FAILURE;
-	}
-
-	if (system (cmd) != 0)
-	{
-		fprintf (stderr, "Error: bootadm failed\n");
-		return EXIT_FAILURE;
-	}
-
-	free (cmd);
 
 	(void) libzfs_fini (libzfs_handle);
 

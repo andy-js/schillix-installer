@@ -25,3 +25,7 @@
 #define DEFAULT_RPOOL_NAME "syspool"
 #define DEFAULT_MNT_POINT "/mnt"
 #define DEFAULT_CDROM_PATH "/.cdrom"
+
+boolean_t config_grub (char *mnt, char *disk);
+boolean_t config_devfs (char *mnt);
+boolean_t config_bootadm (char *mnt);

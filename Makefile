@@ -24,7 +24,7 @@
 #
 
 PROG = schillix-install
-OBJS = main.o disk.o copy.o
+OBJS = main.o disk.o copy.o config.o
 
 CFLAGS = -Wall -Werror -DZPOOL_CREATE_ALTROOT_BUG
 LIBS = -lparted -ladm -lnvpair -lzfs -lsendfile

@@ -412,13 +412,13 @@ copy_files (void)
 
 	if (realpath(cdrom_path, path) == NULL)
 	{
-		perror ("Unable to resolve cdrom path");
+		perror ("Error: Unable to resolve cdrom path");
 		return B_FALSE;
 	}
 
 	if (nftw(path, &process_path, 0, FTW_PHYS) != 0)
 	{
-		fprintf (stderr, "Unable to traverse directory: %s\n", path);
+		fprintf (stderr, "Error: Unable to traverse directory: %s\n", path);
 		return B_FALSE;
 	}
 
@@ -451,13 +451,13 @@ copy_grub (char *mnt, char *rpool)
 
 	if (mkdir (dest, mode) == -1)
 	{
-		perror ("Unable to create boot directory");
+		perror ("Error: Unable to create boot directory");
 		return B_FALSE;
 	}
 
 	if (chown (dest, ROOT_USER, STAFF_GROUP) == -1)
 	{
-		perror ("Unable to chown boot directory");
+		perror ("Error: Unable to chown boot directory");
 		return B_FALSE;
 	}
 
@@ -468,13 +468,13 @@ copy_grub (char *mnt, char *rpool)
 
 	if (mkdir (dest, mode) == -1)
 	{
-		perror ("Unable to create grub directory");
+		perror ("Error: Unable to create grub directory");
 		return B_FALSE;
 	}
 
 	if (chown (dest, ROOT_USER, STAFF_GROUP) == -1)
 	{
-		perror ("Unable to chown grub directory");
+		perror ("Error: Unable to chown grub directory");
 		return B_FALSE;
 	}
 
@@ -486,7 +486,7 @@ copy_grub (char *mnt, char *rpool)
 
 	if (copy_file (path, dest, NULL) == B_FALSE)
 	{
-		fprintf (stderr, "Unable to copy %s\n", path);
+		fprintf (stderr, "Error: Unable to copy %s\n", path);
 		return B_FALSE;
 	}
 
@@ -498,7 +498,7 @@ copy_grub (char *mnt, char *rpool)
 
 	if (copy_file (path, dest, NULL) == B_FALSE)
 	{
-		fprintf (stderr, "Unable to copy %s\n", path);
+		fprintf (stderr, "Error: Unable to copy %s\n", path);
 		return B_FALSE;
 	}
 
@@ -510,7 +510,7 @@ copy_grub (char *mnt, char *rpool)
 
 	if (copy_file (path, dest, NULL) == B_FALSE)
 	{
-		fprintf (stderr, "Unable to copy %s\n", path);
+		fprintf (stderr, "Error: Unable to copy %s\n", path);
 		return B_FALSE;
 	}
 
