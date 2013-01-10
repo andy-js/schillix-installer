@@ -281,6 +281,12 @@ main (int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
+	if (copy_grub (temp_mount, rpool) == B_FALSE)
+	{
+		fprintf (stderr, "Error: Unable to copy boot files\n");
+		return EXIT_FAILURE;
+	}
+
 	(void) libzfs_fini (libzfs_handle);
 
 	return EXIT_SUCCESS;

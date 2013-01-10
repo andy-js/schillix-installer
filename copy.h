@@ -23,3 +23,4 @@
  */
 
 boolean_t copy_files (void);
+boolean_t copy_grub (char *mnt, char *rpool);
