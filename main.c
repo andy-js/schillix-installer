@@ -137,11 +137,42 @@ main (int argc, char **argv)
 		}
 	}
 
+	/*
+	 * Fix any given disk paths
+	 * TODO: Support for creating mirrored rpools!
+	 */
+#define DISK_PATH 	"/dev/dsk"
+#define RDISK_PATH	"/dev/rdsk"
+#define DISK_LEN	8
+#define RDISK_LEN	9
+
 	for (i = optind; i < argc; i++)
 	{
 		if (disk[0] == '\0')
 		{
-			strcpy (disk, argv[i]);
+			/*
+			 * Disk path is too long
+			 */
+			if (strlen (disk) >= PATH_MAX)
+			{
+				fprintf (stderr, "Error: disk path is too long\n");
+				usage (EXIT_FAILURE);
+			}
+			/*
+			 * Path is correct already
+			 */
+			else if (strncmp (RDISK_PATH, argv[i], RDISK_LEN) == 0)
+				strcpy (disk, argv[i]);
+			/*
+			 * Replace /dev/dsk with /dev/rdsk
+			 */
+			else if (strncmp (DISK_PATH, argv[i], DISK_LEN) == 0)
+				sprintf (disk, RDISK_PATH "/%s", argv[i] + DISK_LEN + 1);
+			/*
+			 * Need to append /dev/rdsk
+			 */
+			else
+				sprintf (disk, RDISK_PATH "/%s", argv[i]);
 		}
 		else
 		{

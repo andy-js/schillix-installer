@@ -36,8 +36,6 @@
 
 #include "disk.h"
 
-#define DISK_PATH "/dev/rdsk"
-
 /*
  * Determine if a disk is in use already
  */
@@ -49,7 +47,7 @@ disk_in_use (libzfs_handle_t *libzfs_handle, char *disk)
 	pool_state_t poolstate;
 	boolean_t inuse = B_FALSE;
 
-	(void) sprintf (path, DISK_PATH "/%ss0", disk);
+	(void) sprintf (path, "%ss0", disk);
 
 	/*
 	 * If we can't open the disk, assume it's in use.
@@ -96,9 +94,9 @@ create_root_partition (char *disk)
 	const PedFileSystemType *pfs_type;
 
 #ifdef sparc
-	(void) sprintf (path, DISK_PATH "/%ss2", disk);
+	(void) sprintf (path, "%ss2", disk);
 #else
-	(void) sprintf (path, DISK_PATH "/%sp0", disk);
+	(void) sprintf (path, "%sp0", disk);
 #endif
 
 	if ((pdev = ped_device_get (path)) == NULL)
@@ -166,9 +164,9 @@ create_root_vtoc (char *disk)
 	uint32_t disk_size;
 
 #ifdef sparc
-	(void) sprintf (path, DISK_PATH "/%ss2", disk);
+	(void) sprintf (path, "%ss2", disk);
 #else
-	(void) sprintf (path, DISK_PATH "/%sp0", disk);
+	(void) sprintf (path, "%sp0", disk);
 #endif
 
 	if ((fd = open (path, O_RDWR)) == -1)
@@ -259,7 +257,7 @@ create_root_pool (libzfs_handle_t *libzfs_handle, char *disk, char *rpool)
 		return B_FALSE;
 	}
 
-	(void) sprintf (path, DISK_PATH "/%ss0", disk);
+	(void) sprintf (path, "%ss0", disk);
 
 	if (nvlist_add_string(vdev, ZPOOL_CONFIG_PATH, path) != 0)
 	{
