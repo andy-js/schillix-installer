@@ -38,8 +38,6 @@
 
 #define DISK_PATH "/dev/rdsk"
 
-extern char rpool_name[32];
-
 /*
  * Determine if a disk is in use already
  */

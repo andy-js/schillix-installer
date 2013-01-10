@@ -76,7 +76,7 @@ usage (int retval)
 int
 main (int argc, char **argv)
 {
-	char c, disk[PATH_MAX] = { '\0' }, rpool[32] = DEFAULT_RPOOL_NAME;
+	char c, disk[PATH_MAX] = { '\0' }, rpool[ZPOOL_MAXNAMELEN] = DEFAULT_RPOOL_NAME;
 	int i;
 	DIR *dir;
 	libzfs_handle_t *libzfs_handle;
@@ -90,15 +90,33 @@ main (int argc, char **argv)
 		{
 			case 'r':
 
+				if (strlen (optarg) >= ZPOOL_MAXNAMELEN)
+				{
+					fprintf (stderr, "Error: rpool name too long\n");
+					usage (EXIT_FAILURE);
+				}
+
 				strcpy (rpool, optarg);
 				break;
 
 			case 'm':
 
+				if (strlen (optarg) >= PATH_MAX)
+				{
+					fprintf (stderr, "Error: mountpoint path too long\n");
+					usage (EXIT_FAILURE);
+				}
+
 				strcpy (temp_mount, optarg);
 				break;
 
 			case 'c':
+
+				if (strlen (optarg) >= PATH_MAX)
+				{
+					fprintf (stderr, "Error: livecd path too long\n");
+					usage (EXIT_FAILURE);
+				}
 
 				strcpy (cdrom_path, optarg);
 				break;
