@@ -76,7 +76,7 @@ usage (int retval)
 int
 main (int argc, char **argv)
 {
-	char c, disk[PATH_MAX] = { '\0' }, rpool[ZPOOL_MAXNAMELEN] = DEFAULT_RPOOL_NAME;
+	char c, *cmd, disk[PATH_MAX] = { '\0' }, rpool[ZPOOL_MAXNAMELEN] = DEFAULT_RPOOL_NAME;
 	int i;
 	DIR *dir;
 	libzfs_handle_t *libzfs_handle;
@@ -286,6 +286,56 @@ main (int argc, char **argv)
 		fprintf (stderr, "Error: Unable to copy boot files\n");
 		return EXIT_FAILURE;
 	}
+
+	/*
+	 * Final steps required to create a bootable system
+	 * Usage of system(3c) makes me feel dirty - find
+	 * out how these utilities do what they do and copy it
+	 */
+	puts ("Finishing up...");
+
+	if (asprintf (&cmd, "/usr/sbin/installgrub -mf %s/boot/grub/stage1 "
+		"%s/boot/grub/stage2 %ss0", temp_mount, temp_mount, disk) == NULL)
+	{
+		fprintf (stderr, "Error: out of memory\n");
+		return EXIT_FAILURE;
+	}
+
+	if (system (cmd) != 0)
+	{
+		fprintf (stderr, "Error: installgrub failed\n");
+		return EXIT_FAILURE;
+	}
+
+	free (cmd);
+
+	if (asprintf (&cmd, "/usr/sbin/devfsadm -r %s", temp_mount) == NULL)
+	{
+		fprintf (stderr, "Error: out of memory\n");
+		return EXIT_FAILURE;
+	}
+
+	if (system (cmd) != 0)
+	{
+		fprintf (stderr, "Error: devfsadm failed\n");
+		return EXIT_FAILURE;
+	}
+
+	free (cmd);
+
+	if (asprintf (&cmd, "/usr/sbin/bootadm update-archive -R %s\n", temp_mount) == NULL)
+	{
+		fprintf (stderr, "Error: out of memory\n");
+		return EXIT_FAILURE;
+	}
+
+	if (system (cmd) != 0)
+	{
+		fprintf (stderr, "Error: bootadm failed\n");
+		return EXIT_FAILURE;
+	}
+
+	free (cmd);
 
 	(void) libzfs_fini (libzfs_handle);
 
