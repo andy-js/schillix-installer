@@ -516,6 +516,35 @@ create_root_datasets (libzfs_handle_t *libzfs_handle, char *rpool)
 }
 
 /*
+ * Set bootfs property on rpool
+ */
+boolean_t
+set_root_bootfs (libzfs_handle_t *libzfs_handle, char *rpool)
+{
+	char path[PATH_MAX];
+	zpool_handle_t *zpool_handle;
+
+	if ((zpool_handle = zpool_open (libzfs_handle, rpool)) == NULL)
+	{
+		fprintf (stderr, "Error: Unable to open rpool\n");
+		zpool_close (zpool_handle);
+		return B_FALSE;
+	}
+
+	(void) sprintf (path, "%s/ROOT/" ROOT_NAME, rpool);
+
+	if (zpool_set_prop (zpool_handle, "bootfs", path) == -1)
+	{
+		fprintf (stderr, "Error: Unable to set rpool bootfs\n");
+		zpool_close (zpool_handle);
+		return B_FALSE;
+	}
+
+	zpool_close (zpool_handle);
+	return B_TRUE;
+}
+
+/*
  * Recursively mount datasets on new rpool
  */
 boolean_t
@@ -526,15 +555,18 @@ mount_root_datasets (libzfs_handle_t *libzfs_handle, char *rpool)
 	if ((zpool_handle = zpool_open (libzfs_handle, rpool)) == NULL)
 	{
 		fprintf (stderr, "Error: Unable to open rpool\n");
+		zpool_close (zpool_handle);
 		return B_FALSE;
 	}
 
 	if (zpool_enable_datasets (zpool_handle, NULL, 0) == -1)
 	{
 		fprintf (stderr, "Error: Unable to mount rpool\n");
+		zpool_close (zpool_handle);
 		return B_FALSE;
 	}
 
+	zpool_close (zpool_handle);
 	return B_TRUE;
 }
 
@@ -549,15 +581,18 @@ unmount_root_datasets (libzfs_handle_t *libzfs_handle, char *rpool)
 	if ((zpool_handle = zpool_open (libzfs_handle, rpool)) == NULL)
 	{
 		fprintf (stderr, "Error: Unable to open rpool\n");
+		zpool_close (zpool_handle);
 		return B_FALSE;
 	}
 
 	if (zpool_disable_datasets (zpool_handle, B_TRUE) == -1)
 	{
 		fprintf (stderr, "Error: Unable to unmount rpool\n");
+		zpool_close (zpool_handle);
 		return B_FALSE;
 	}
 
+	zpool_close (zpool_handle);
 	return B_TRUE;
 }
 

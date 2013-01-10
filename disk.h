@@ -30,5 +30,6 @@ boolean_t create_root_vtoc (char *disk);
 boolean_t create_root_pool (libzfs_handle_t *libzfs_handle, char *disk, char *pool);
 boolean_t export_root_pool (libzfs_handle_t *libzfs_handle, char *pool);
 boolean_t create_root_datasets (libzfs_handle_t *libzfs_handle, char *pool);
+boolean_t set_root_bootfs (libzfs_handle_t *libzfs_handle, char *pool);
 boolean_t mount_root_datasets (libzfs_handle_t *libzfs_handle, char *pool);
 boolean_t unmount_root_datasets (libzfs_handle_t *libzfs_handle, char *pool);

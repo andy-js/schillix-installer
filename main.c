@@ -265,6 +265,9 @@ main (int argc, char **argv)
 	if (create_root_datasets (libzfs_handle, rpool) == B_FALSE)
 		return EXIT_FAILURE;
 
+	if (set_root_bootfs (libzfs_handle, rpool) == B_FALSE)
+		return EXIT_FAILURE;
+
 	/*
 	 * Mount new filesystem and copy files
 	 */
