@@ -384,6 +384,29 @@ create_root_pool (libzfs_handle_t *libzfs_handle, char *disk, char *rpool)
 }
 
 /*
+ * Export ZFS root pool
+ */
+boolean_t
+export_root_pool (libzfs_handle_t *libzfs_handle, char *rpool)
+{
+	zpool_handle_t *zpool_handle;
+
+	if ((zpool_handle = zpool_open (libzfs_handle, rpool)) == NULL)
+	{
+		fprintf (stderr, "Error: Unable to open rpool\n");
+		return B_FALSE;
+	}
+
+	if (zpool_export (zpool_handle, B_FALSE) == -1)
+	{
+		fprintf (stderr, "Error: Unable to unmount rpool\n");
+		return B_FALSE;
+	}
+
+	return B_TRUE;
+}
+
+/*
  * Create root ZFS filesystem on first slice (s0)
  */
 boolean_t
@@ -509,6 +532,29 @@ mount_root_datasets (libzfs_handle_t *libzfs_handle, char *rpool)
 	if (zpool_enable_datasets (zpool_handle, NULL, 0) == -1)
 	{
 		fprintf (stderr, "Error: Unable to mount rpool\n");
+		return B_FALSE;
+	}
+
+	return B_TRUE;
+}
+
+/*
+ * Recursively unmount datasets on rpool
+ */
+boolean_t
+unmount_root_datasets (libzfs_handle_t *libzfs_handle, char *rpool)
+{
+	zpool_handle_t *zpool_handle;
+
+	if ((zpool_handle = zpool_open (libzfs_handle, rpool)) == NULL)
+	{
+		fprintf (stderr, "Error: Unable to open rpool\n");
+		return B_FALSE;
+	}
+
+	if (zpool_disable_datasets (zpool_handle, B_TRUE) == -1)
+	{
+		fprintf (stderr, "Error: Unable to unmount rpool\n");
 		return B_FALSE;
 	}
 

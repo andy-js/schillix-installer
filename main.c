@@ -68,6 +68,7 @@ usage (int retval)
 	fprintf (out, "\t-r name or new rpool (default is " DEFAULT_RPOOL_NAME ")\n");
 	fprintf (out, "\t-m temporary mountpoint (default is " DEFAULT_MNT_POINT ")\n");
 	fprintf (out, "\t-c path to livecd contents (default is " DEFAULT_CDROM_PATH ")\n");
+	fprintf (out, "\t-u don't unmount or export rpool after install\n");
 	fprintf (out, "\t-? print this message and exit\n");
 
 	exit (retval);
@@ -80,16 +81,19 @@ main (int argc, char **argv)
 	int i;
 	DIR *dir;
 	libzfs_handle_t *libzfs_handle;
+	boolean_t unmount = B_TRUE;
 
 	/*
 	 * Parse command line arguments
 	 */
-	while ((c = getopt (argc, argv, "r:m:c:?")) != -1)
+	while ((c = getopt (argc, argv, "r:m:c:u?")) != -1)
 	{
 		switch (c)
 		{
 			case 'r':
-
+				/*
+				 * Set alternative rpool name
+				 */
 				if (strlen (optarg) >= ZPOOL_MAXNAMELEN)
 				{
 					fprintf (stderr, "Error: rpool name too long\n");
@@ -100,7 +104,9 @@ main (int argc, char **argv)
 				break;
 
 			case 'm':
-
+				/*
+				 * Set alternative temp mountpoint
+				 */
 				if (strlen (optarg) >= PATH_MAX)
 				{
 					fprintf (stderr, "Error: mountpoint path too long\n");
@@ -111,7 +117,9 @@ main (int argc, char **argv)
 				break;
 
 			case 'c':
-
+				/*
+				 * Set alternative path to livecd contents
+				 */
 				if (strlen (optarg) >= PATH_MAX)
 				{
 					fprintf (stderr, "Error: livecd path too long\n");
@@ -121,8 +129,18 @@ main (int argc, char **argv)
 				strcpy (cdrom_path, optarg);
 				break;
 
-			case '?':
+			case 'u':
+				/*
+				 * Don't unmount or export zpool with done
+				 */
+				unmount = B_FALSE;
+				break;
 
+			case '?':
+				/*
+				 * We get here if an argument is missing or
+				 * the user gave -?
+				 */
 				if (optopt == '?')
 					usage (EXIT_SUCCESS);
 				else
@@ -277,7 +295,23 @@ main (int argc, char **argv)
 	if (config_bootadm (temp_mount) == B_FALSE)
 		return EXIT_FAILURE;
 
+	/*
+	 * Unmount and export new rpool
+	 */
+	if (unmount == B_TRUE)
+	{
+		puts ("Unmounting filesystem...");
+
+		if (unmount_root_datasets (libzfs_handle, rpool) == B_FALSE)
+			return EXIT_FAILURE;
+
+		if (export_root_pool (libzfs_handle, rpool) == B_FALSE)
+			return EXIT_FAILURE;
+	}
+
 	(void) libzfs_fini (libzfs_handle);
+
+	puts ("Done.");
 
 	return EXIT_SUCCESS;
 }
