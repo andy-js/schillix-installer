@@ -54,6 +54,12 @@ disk_in_use (libzfs_handle_t *libzfs_handle, char *disk)
 	 */
 	if ((fd = open (path, O_RDONLY)) == -1)
 	{
+		/*
+		 * If the disk has no s0 slice yet we can probably consider it unused
+		 */
+		if (errno == ENOENT || errno == EIO)
+			return B_FALSE;
+
 		fprintf (stderr, "Error: Unable to probe disk: %s\n", strerror (errno));
 		return B_TRUE;
 	}
