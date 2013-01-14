@@ -127,6 +127,8 @@ copy_file (const char *path, const char *dest, const struct stat *statptr)
 #define MENULSTLEN	19
 #define VFSTABPATH	"/etc/vfstab"
 #define VFSTABLEN	11
+#define DOTCDROMPATH	"/.cdrom"
+#define DOTCDROMLEN	7
 
 /*
  * Install a file/directory/symlink.  Called by copy_files
@@ -297,8 +299,6 @@ process_path (const char *path, const struct stat *statptr, int fileflag, struct
 				/*
 				 * Copy file to new destination
 				 */
-
-
 				if (copy_file (path, dest, statptr) == B_FALSE)
 				{
 					fprintf (stderr, "Unable to copy %s\n", path);
@@ -314,6 +314,14 @@ process_path (const char *path, const struct stat *statptr, int fileflag, struct
 			 * Create new directory and copy permissions
 			 */
 			(void) sprintf (dest, "%s/%s", temp_mount, path + strlen (base));
+
+			/*
+			 * Don't bother copying the /.cdrom dir as it confuses the
+			 * boot scripts into thinking it's still running live
+			 */
+			if (strncmp (path + strlen (path) - DOTCDROMLEN, DOTCDROMPATH, DOTCDROMLEN) == 0
+			    && pftw->level == 1)
+				return 0;
 
 			if (mkdir (dest, statptr->st_mode) == -1)
 			{
