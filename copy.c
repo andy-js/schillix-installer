@@ -188,87 +188,6 @@ process_path (const char *path, const struct stat *statptr, int fileflag, struct
 				(void) fclose (fp);
 			}
 			/*
-			 * Replace /boot/grub/menu.lst with a generated one
-			 */
-			else if (strncmp (path + strlen (path) - MENULSTLEN, MENULSTPATH, MENULSTLEN) == 0)
-			{
-				FILE *fp;
-
-				if ((fp = fopen (dest, "w+")) == NULL)
-				{
-					perror ("Unable to open menu.lst");
-					return 1;
-				}
-
-				/*
-				 * TODO: Find out if there is some menu.lst file parser library or
-				 * SOMETHING that can be used instead of including this entire file!
-				 */
-				fprintf (fp, "#\n");
-				fprintf (fp, "# default menu entry to boot\n");
-				fprintf (fp, "default 0\n");
-				fprintf (fp, "#\n");
-				fprintf (fp, "# menu timeout in second before default OS is booted\n");
-				fprintf (fp, "# set to -1 to wait for user input\n");
-				fprintf (fp, "timeout 10\n");
-				fprintf (fp, "#\n");
-				fprintf (fp, "# To enable grub serial console to ttya uncomment the following lines\n");
-				fprintf (fp, "# and comment out the splashimage line below\n");
-				fprintf (fp, "# WARNING: don't enable grub serial console when BIOS console serial\n");
-				fprintf (fp, "#	redirection is active!!!\n");
-				fprintf (fp, "#   serial --unit=0 --speed=9600\n");
-				fprintf (fp, "#   terminal serial\n");
-				fprintf (fp, "#\n");
-				fprintf (fp, "# Uncomment the following line to enable GRUB splashimage on console\n");
-				fprintf (fp, "#   splashimage /boot/grub/splash.xpm.gz\n");
-				fprintf (fp, "splashimage /boot/grub/splash.xpm.gz\n");
-				fprintf (fp, "#\n");
-				fprintf (fp, "# To chainload another OS\n");
-				fprintf (fp, "#\n");
-				fprintf (fp, "# title Another OS\n");
-				fprintf (fp, "#	root (hd<disk no>,<partition no>)\n");
-				fprintf (fp, "#	chainloader +1\n");
-				fprintf (fp, "#\n");
-				fprintf (fp, "# To chainload a Solaris release not based on grub\n");
-				fprintf (fp, "#\n");
-				fprintf (fp, "# title Solaris 9\n");
-				fprintf (fp, "#	root (hd<disk no>,<partition no>)\n");
-				fprintf (fp, "#	chainloader +1\n");
-				fprintf (fp, "#	makeactive\n");
-				fprintf (fp, "#\n");
-				fprintf (fp, "# To load a Solaris instance based on grub\n");
-				fprintf (fp, "# If GRUB determines if the booting system is 64-bit capable,\n");
-				fprintf (fp, "# the kernel$ and module$ commands expand $ISADIR to \"amd64\"\n");
-				fprintf (fp, "#\n");
-				fprintf (fp, "# title Solaris <version>\n");
-				fprintf (fp, "#	root (hd<disk no>,<partition no>,x)	--x = Solaris root slice\n");
-				fprintf (fp, "#	kernel$ /platform/i86pc/kernel/$ISADIR/unix\n");
-				fprintf (fp, "#	module$ /platform/i86pc/$ISADIR/boot_archive\n");
-				fprintf (fp, "\n");
-				fprintf (fp, "#\n");
-				fprintf (fp, "# To override Solaris boot args (see kernel(1M)), console device and\n");
-				fprintf (fp, "# properties set via eeprom(1M) edit the \"kernel\" line to:\n");
-				fprintf (fp, "#\n");
-				fprintf (fp, "#   kernel /platform/i86pc/kernel/unix <boot-args> -B prop1=val1,prop2=val2,...\n");
-				fprintf (fp, "#\n");
-				fprintf (fp, "\n");
-				fprintf (fp, "title SchilliX build-147i partition a\n");
-				fprintf (fp, "	root (hd0,0,a)\n");
-				fprintf (fp, "	kernel$ /platform/i86pc/kernel/$ISADIR/unix -v -B $ZFS-BOOTFS\n");
-				fprintf (fp, "	module$ /platform/i86pc/$ISADIR/boot_archive\n");
-				fprintf (fp, "\n");
-				fprintf (fp, "title SchilliX  failsafe build-147i partition a\n");
-				fprintf (fp, "	root (hd0,0,a)\n");
-				fprintf (fp, "	kernel /platform/i86pc/kernel/unix -v -B $ZFS-BOOTFS,keyboard-layout=Ask\n");
-				fprintf (fp, "	module /boot/grub/boot_archive\n");
-				fprintf (fp, "\n");
-				fprintf (fp, "title Memtest X86\n");
-				fprintf (fp, "	root (hd0,0,a)\n");
-				fprintf (fp, "	kernel /boot/grub/memtest.bin\n");
-
-				(void) fclose (fp);
-			}
-			/*
 			 * Replace /etc/vfstab with a generated one
 			 */
 			else if (strncmp (path + strlen (path) - VFSTABLEN, VFSTABPATH, VFSTABLEN) == 0)
@@ -442,6 +361,7 @@ copy_files (void)
 boolean_t
 copy_grub (char *mnt, char *rpool)
 {
+	FILE *fp;
 	char dest[PATH_MAX], path[PATH_MAX];
 	mode_t mode = 0;
 
@@ -470,7 +390,7 @@ copy_grub (char *mnt, char *rpool)
 	}
 
 	/*
-	 * Create grub directory
+	 * Create /boot/grub directory
 	 */
 	(void) sprintf (dest, "%s/%s/boot/grub", mnt, rpool);
 
@@ -487,7 +407,7 @@ copy_grub (char *mnt, char *rpool)
 	}
 
 	/*
-	 * Copy /grub/capability
+	 * Copy /boot/grub/capability
 	 */
 	(void) sprintf (path, "%s/boot/grub/capability", mnt);
 	(void) sprintf (dest, "%s/%s/boot/grub/capability", mnt, rpool);
@@ -499,19 +419,86 @@ copy_grub (char *mnt, char *rpool)
 	}
 
 	/*
-	 * Copy /grub/menu.lst
+	 * Create /boot/<rpool>/grub/menu.lst
 	 */
-	(void) sprintf (path, "%s/boot/grub/menu.lst", mnt);
 	(void) sprintf (dest, "%s/%s/boot/grub/menu.lst", mnt, rpool);
 
-	if (copy_file (path, dest, NULL) == B_FALSE)
+	if ((fp = fopen (dest, "w+")) == NULL)
 	{
-		fprintf (stderr, "Error: Unable to copy %s\n", path);
+		perror ("Unable to create menu.lst");
 		return B_FALSE;
 	}
 
 	/*
-	 * Copy /grub/splash.xpm.gz
+	 * TODO: Find out if there is some menu.lst file parser library or
+	 * SOMETHING that can be used instead of including this entire file!
+	 */
+	fprintf (fp, "#\n");
+	fprintf (fp, "# default menu entry to boot\n");
+	fprintf (fp, "default 0\n");
+	fprintf (fp, "#\n");
+	fprintf (fp, "# menu timeout in second before default OS is booted\n");
+	fprintf (fp, "# set to -1 to wait for user input\n");
+	fprintf (fp, "timeout 10\n");
+	fprintf (fp, "#\n");
+	fprintf (fp, "# To enable grub serial console to ttya uncomment the following lines\n");
+	fprintf (fp, "# and comment out the splashimage line below\n");
+	fprintf (fp, "# WARNING: don't enable grub serial console when BIOS console serial\n");
+	fprintf (fp, "#	redirection is active!!!\n");
+	fprintf (fp, "#   serial --unit=0 --speed=9600\n");
+	fprintf (fp, "#   terminal serial\n");
+	fprintf (fp, "#\n");
+	fprintf (fp, "# Uncomment the following line to enable GRUB splashimage on console\n");
+	fprintf (fp, "#   splashimage /boot/grub/splash.xpm.gz\n");
+	fprintf (fp, "splashimage /boot/grub/splash.xpm.gz\n");
+	fprintf (fp, "#\n");
+	fprintf (fp, "# To chainload another OS\n");
+	fprintf (fp, "#\n");
+	fprintf (fp, "# title Another OS\n");
+	fprintf (fp, "#	root (hd<disk no>,<partition no>)\n");
+	fprintf (fp, "#	chainloader +1\n");
+	fprintf (fp, "#\n");
+	fprintf (fp, "# To chainload a Solaris release not based on grub\n");
+	fprintf (fp, "#\n");
+	fprintf (fp, "# title Solaris 9\n");
+	fprintf (fp, "#	root (hd<disk no>,<partition no>)\n");
+	fprintf (fp, "#	chainloader +1\n");
+	fprintf (fp, "#	makeactive\n");
+	fprintf (fp, "#\n");
+	fprintf (fp, "# To load a Solaris instance based on grub\n");
+	fprintf (fp, "# If GRUB determines if the booting system is 64-bit capable,\n");
+	fprintf (fp, "# the kernel$ and module$ commands expand $ISADIR to \"amd64\"\n");
+	fprintf (fp, "#\n");
+	fprintf (fp, "# title Solaris <version>\n");
+	fprintf (fp, "#	root (hd<disk no>,<partition no>,x)	--x = Solaris root slice\n");
+	fprintf (fp, "#	kernel$ /platform/i86pc/kernel/$ISADIR/unix\n");
+	fprintf (fp, "#	module$ /platform/i86pc/$ISADIR/boot_archive\n");
+	fprintf (fp, "\n");
+	fprintf (fp, "#\n");
+	fprintf (fp, "# To override Solaris boot args (see kernel(1M)), console device and\n");
+	fprintf (fp, "# properties set via eeprom(1M) edit the \"kernel\" line to:\n");
+	fprintf (fp, "#\n");
+	fprintf (fp, "#   kernel /platform/i86pc/kernel/unix <boot-args> -B prop1=val1,prop2=val2,...\n");
+	fprintf (fp, "#\n");
+	fprintf (fp, "\n");
+	fprintf (fp, "title SchilliX build-147i partition a\n");
+	fprintf (fp, "	findroot(pool_%s,0,a)\n", rpool);
+	fprintf (fp, "	kernel$ /platform/i86pc/kernel/$ISADIR/unix -v -B $ZFS-BOOTFS\n");
+	fprintf (fp, "	module$ /platform/i86pc/$ISADIR/boot_archive\n");
+	fprintf (fp, "\n");
+	fprintf (fp, "title SchilliX  failsafe build-147i partition a\n");
+	fprintf (fp, "	findroot(pool_%s,0,a)\n", rpool);
+	fprintf (fp, "	kernel /platform/i86pc/kernel/unix -v -B $ZFS-BOOTFS,keyboard-layout=Ask\n");
+	fprintf (fp, "	module /boot/grub/boot_archive\n");
+	fprintf (fp, "\n");
+	fprintf (fp, "title Memtest X86\n");
+	fprintf (fp, "	findroot(pool_%s,0,a)\n", rpool);
+	fprintf (fp, "	kernel /boot/grub/memtest.bin\n");
+
+	(void) fclose (fp);
+
+	/*
+	 * Copy /boot/grub/splash.xpm.gz
 	 */
 	(void) sprintf (path, "%s/boot/grub/splash.xpm.gz", mnt);
 	(void) sprintf (dest, "%s/%s/boot/grub/splash.xpm.gz", mnt, rpool);
@@ -521,6 +508,37 @@ copy_grub (char *mnt, char *rpool)
 		fprintf (stderr, "Error: Unable to copy %s\n", path);
 		return B_FALSE;
 	}
+
+	/*
+	 * Create /boot/grub/bootsign
+	 */
+	(void) sprintf (dest, "%s/%s/boot/grub/bootsign", mnt, rpool); 
+
+	if (mkdir (dest, mode) == -1)
+	{
+		perror ("Error: Unable to create boot directory");
+		return B_FALSE;
+	}
+
+	if (chown (dest, ROOT_USER, STAFF_GROUP) == -1)
+	{
+		perror ("Error: Unable to chown boot directory");
+		return B_FALSE;
+	}
+
+
+	/*
+	 * Create /boot/grub/bootsign/pool_<rpool>
+	 */
+	(void) sprintf (dest, "%s/%s/boot/grub/bootsign/pool_%s", mnt, rpool, rpool);
+
+	if ((fp = fopen (dest, "w+")) == NULL)
+	{
+		perror ("Unable to create menu.lst");
+		return B_FALSE;
+	}
+
+	(void) fclose (fp);
 
 	return B_TRUE;
 }
