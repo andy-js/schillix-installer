@@ -259,7 +259,7 @@ main (int argc, char **argv)
 	 */
 	puts ("Creating new filesystem...");
 
-	if (create_root_pool (libzfs_handle, disk, rpool) == B_FALSE)
+	if (create_root_pool (libzfs_handle, disk, rpool, temp_mount) == B_FALSE)
 		return EXIT_FAILURE;
 
 	if (create_root_datasets (libzfs_handle, rpool) == B_FALSE)

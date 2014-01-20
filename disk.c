@@ -246,7 +246,7 @@ create_root_vtoc (char *disk)
  * Create root ZFS pool on first slice (s0)
  */
 boolean_t
-create_root_pool (libzfs_handle_t *libzfs_handle, char *disk, char *rpool)
+create_root_pool (libzfs_handle_t *libzfs_handle, char *disk, char *rpool, char *mnt)
 {
 	char path[PATH_MAX];
 	nvlist_t *vdev, *nvroot, *props, *fsprops;
@@ -317,7 +317,7 @@ create_root_pool (libzfs_handle_t *libzfs_handle, char *disk, char *rpool)
 		return B_FALSE;
 	}
 
-	if (nvlist_add_string (props, zpool_prop_to_name (ZPOOL_PROP_ALTROOT), "/mnt") != 0)
+	if (nvlist_add_string (props, zpool_prop_to_name (ZPOOL_PROP_ALTROOT), mnt) != 0)
 	{
 		fprintf (stderr, "Error: Unable to set root mountpoint\n");
 		(void) nvlist_free (vdev);
