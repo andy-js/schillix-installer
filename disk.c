@@ -403,7 +403,7 @@ export_root_pool (libzfs_handle_t *libzfs_handle, char *rpool)
 		return B_FALSE;
 	}
 
-	if (zpool_export (zpool_handle, B_FALSE, NULL) == -1)
+	if (zpool_export (zpool_handle, B_FALSE) == -1)
 	{
 		fprintf (stderr, "Error: Unable to unmount rpool\n");
 		return B_FALSE;
